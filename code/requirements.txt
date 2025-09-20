@@ -1,0 +1,28 @@
+# Core ML dependencies
+torch>=2.0.0
+transformers>=4.30.0
+accelerate>=0.20.0  # For efficient model loading
+bitsandbytes>=0.40.0  # For quantization support
+
+# Scientific computing
+numpy>=1.20.0
+scipy>=1.7.0
+
+# Visualization
+matplotlib>=3.3.0
+seaborn>=0.11.0
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-timeout>=2.1.0  # For timeout control in tests
+
+# Development
+ipykernel>=6.0.0
+jupyter>=1.0.0
+ipywidgets>=8.0.0
+tqdm>=4.65.0
+
+# Optional but recommended
+datasets>=2.0.0  # For accessing HuggingFace datasets
+huggingface-hub>=0.15.0  # For model management
