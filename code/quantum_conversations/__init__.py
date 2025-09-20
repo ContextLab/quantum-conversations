@@ -31,7 +31,7 @@ from .utils import (
     batch_generate_prompts
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"  # Updated with bumplot visualization
 __all__ = [
     # Core classes
     "ParticleFilter",

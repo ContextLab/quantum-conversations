@@ -130,6 +130,19 @@ dmypy.json
 
 .DS_Store
 
+# Large data files
+data/derivatives/**/*.pkl
+data/derivatives/**/*.pt
+data/derivatives/**/*.pth
+data/derivatives/**/*.npy
+data/derivatives/**/*.npz
+data/derivatives/**/*.h5
+data/derivatives/**/*.hdf5
+
+# Model cache
+.cache/
+models/
+
 # latex "junk" files
 *.cb*
 *.dvi

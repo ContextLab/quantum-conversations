@@ -52,6 +52,7 @@ fig = viz.visualize(particles, prompt)
 
 #### TokenSequenceVisualizer
 - Creates Sankey-like diagrams showing particle paths
+- **NEW: Bump plot visualizations** showing token trajectories over time
 - Generates probability heatmaps
 - Customizable styling and output options
 
@@ -68,3 +69,23 @@ See `code/quantum_conversations_demo.ipynb` for a comprehensive demonstration in
 - Visualizing paths for 30 different starter sequences
 - Analyzing divergence patterns based on prompt ambiguity
 - Interactive exploration of custom prompts
+
+### Bump Plot Visualization
+
+The new bump plot feature visualizes how tokens evolve across time for each particle:
+
+```python
+# Create bump plot visualization
+fig = viz.visualize_bumplot(
+    particles,
+    color_by='transition_prob',  # Color by probability
+    max_vocab_display=50,         # Show top 50 tokens
+    show_tokens=True,              # Display token labels
+    output_path='bumplot.png'
+)
+```
+
+Color schemes available:
+- `'transition_prob'`: Colors reflect token transition probabilities
+- `'entropy'`: Colors based on entropy at each step
+- `'particle_id'`: Distinct colors for each particle
