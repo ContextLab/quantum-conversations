@@ -366,9 +366,15 @@ class TokenSequenceVisualizer:
         ax.set_ylabel('Token Rank', fontsize=12)
         ax.set_title('Particle Token Trajectories (Bump Plot)', fontsize=14, fontweight='bold')
 
-        # Add token labels if requested
+        # Set y-axis ticks to show ranks (1 at top)
+        ranks = sorted(metadata['token_ranks'].values())
+        ax.set_yticks(ranks)
+        ax.set_yticklabels(ranks)
+        ax.invert_yaxis()  # Rank 1 at top
+
+        # Overlay token labels on the plot if requested
         if show_tokens and 'token_to_text' in metadata:
-            self._add_token_labels(ax, metadata['token_to_text'], metadata['token_ranks'])
+            self._overlay_token_labels(ax, df, metadata, max_length=len(df))
 
         # Add colorbar if using probability coloring
         if color_by == 'transition_prob' and 'colormap' in metadata:
@@ -409,7 +415,8 @@ class TokenSequenceVisualizer:
         metadata = {
             'token_ranks': token_ranks,
             'transition_probs': {},
-            'token_to_text': {}
+            'token_to_text': {},
+            'position_tokens': {}  # Maps (timestep, rank) -> token_text
         }
 
         # Process each particle
@@ -420,7 +427,19 @@ class TokenSequenceVisualizer:
             ranked_tokens = []
             for t, token in enumerate(particle.tokens):
                 if token in token_ranks:
-                    ranked_tokens.append(token_ranks[token])
+                    rank = token_ranks[token]
+                    ranked_tokens.append(rank)
+
+                    # Store which token appears at this position and rank
+                    if hasattr(self, 'tokenizer'):
+                        try:
+                            token_text = self.tokenizer.decode([token])
+                            # Clean up token text
+                            token_text = token_text.strip().replace('\n', '↵')[:15]
+                            if (t, rank) not in metadata['position_tokens']:
+                                metadata['position_tokens'][(t, rank)] = token_text
+                        except:
+                            pass
 
                     # Store transition probability if available
                     if t > 0 and t-1 < len(particle.token_probs_history):
@@ -559,30 +578,40 @@ class TokenSequenceVisualizer:
 
         return colors
 
-    def _add_token_labels(
+    def _overlay_token_labels(
         self,
         ax: plt.Axes,
-        token_to_text: Dict[int, str],
-        token_ranks: Dict[int, int]
+        df: pd.DataFrame,
+        metadata: Dict,
+        max_length: int
     ):
         """
-        Add token text labels to y-axis.
+        Overlay token text at each (timestep, rank) position on the plot.
         """
-        if not token_to_text:
+        position_tokens = metadata.get('position_tokens', {})
+        if not position_tokens:
             return
 
-        # Get current y-ticks
-        y_ticks = ax.get_yticks()
-
-        # Map ticks to token text
-        y_labels = []
-        for tick in y_ticks:
-            if int(tick) in token_to_text:
-                y_labels.append(token_to_text[int(tick)])
-            else:
-                y_labels.append('')
-
-        ax.set_yticklabels(y_labels, fontsize=8)
+        # Add text annotations for each unique token at each position
+        for (timestep, rank), token_text in position_tokens.items():
+            if timestep < max_length:
+                # Add text at the position, with slight offset for readability
+                ax.text(
+                    timestep,
+                    rank,
+                    token_text,
+                    fontsize=7,
+                    ha='center',
+                    va='center',
+                    bbox=dict(
+                        boxstyle='round,pad=0.2',
+                        facecolor='white',
+                        edgecolor='gray',
+                        alpha=0.8,
+                        linewidth=0.5
+                    ),
+                    zorder=1000  # Ensure text appears on top
+                )
 
     def _add_probability_colorbar(
         self,

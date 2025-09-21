@@ -140,17 +140,29 @@ def compute_token_entropy(prob_distribution: Dict[int, float]) -> float:
     return float(entropy)
 
 
-def compute_sequence_entropy(token_probs_history: List[Dict[int, float]]) -> List[float]:
+def compute_sequence_entropy(particle_or_history) -> float:
     """
-    Compute entropy for each step in a sequence.
+    Compute mean entropy for a particle or sequence of probability distributions.
 
     Args:
-        token_probs_history: List of probability distributions
+        particle_or_history: Either a Particle object or list of probability distributions
 
     Returns:
-        List of entropy values
+        Mean entropy value across the sequence
     """
-    return [compute_token_entropy(probs) for probs in token_probs_history]
+    # Handle both Particle objects and raw probability histories
+    if hasattr(particle_or_history, 'token_probs_history'):
+        # It's a Particle object
+        token_probs_history = particle_or_history.token_probs_history
+    else:
+        # It's already a list of probability distributions
+        token_probs_history = particle_or_history
+
+    if not token_probs_history:
+        return 0.0
+
+    entropies = [compute_token_entropy(probs) for probs in token_probs_history]
+    return float(np.mean(entropies))
 
 
 def compute_divergence_score(particles: List) -> float:
