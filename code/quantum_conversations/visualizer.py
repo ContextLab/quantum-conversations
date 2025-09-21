@@ -306,6 +306,7 @@ class TokenSequenceVisualizer:
         show_tokens: bool = True,
         curve_force: float = 0.5,
         figsize: Optional[Tuple[int, int]] = None,
+        colormap: str = 'RdYlGn',
         **kwargs
     ) -> plt.Figure:
         """
@@ -346,20 +347,35 @@ class TokenSequenceVisualizer:
         # Get particle column names (excluding 'timestep')
         particle_columns = [col for col in df.columns if col.startswith('particle_')]
 
-        # Create bumplot
+        # Use custom bumplot with per-segment coloring
         try:
-            bumplot(
-                x='timestep',
-                y_columns=particle_columns,
-                data=df,
-                curve_force=curve_force,
-                colors=colors,
-                ax=ax,
-                **kwargs
+            from .custom_bumplot import create_custom_bumplot, prepare_transition_data, add_token_labels
+
+            # Prepare data with transition frequencies
+            df_custom, metadata_custom = prepare_transition_data(particles, max_timesteps=len(df))
+
+            # Create custom bumplot
+            create_custom_bumplot(
+                df_custom,
+                metadata_custom,
+                ax,
+                colormap=colormap,
+                alpha=0.6,
+                linewidth=1.0
             )
+
+            # Update metadata for token labels
+            metadata.update(metadata_custom)
+            metadata['colormap_name'] = colormap
+
         except Exception as e:
-            logger.error(f"Error creating bumplot: {e}")
-            return fig
+            logger.warning(f"Using fallback bumplot: {e}")
+            # Fallback to simple plotting
+            for col in particle_columns:
+                trajectory = df[['timestep', col]].dropna()
+                if len(trajectory) > 1:
+                    ax.plot(trajectory['timestep'], trajectory[col],
+                           alpha=0.3, linewidth=0.5, color='steelblue')
 
         # Customize plot
         ax.set_xlabel('Time Step', fontsize=12)
@@ -375,11 +391,19 @@ class TokenSequenceVisualizer:
 
         # Overlay token labels on the plot if requested
         if show_tokens:
-            self._overlay_token_labels(ax, df, metadata, max_length=len(df))
+            try:
+                from .custom_bumplot import add_token_labels
+                add_token_labels(ax, metadata, self.tokenizer,
+                               colormap=metadata.get('colormap_name', 'RdYlGn'),
+                               show_freq=True)
+            except Exception as e:
+                logger.warning(f"Using fallback token labels: {e}")
+                # Fallback to old method
+                self._overlay_token_labels(ax, df, metadata, max_length=len(df))
 
-        # Add colorbar if using probability coloring
-        if color_by == 'transition_prob' and 'colormap' in metadata:
-            self._add_probability_colorbar(fig, metadata['colormap'])
+        # Add colorbar legend for probabilities
+        if show_tokens or color_by == 'transition_prob':
+            self._add_dual_probability_legend(fig, colormap)
 
         plt.tight_layout()
 
@@ -691,6 +715,35 @@ class TokenSequenceVisualizer:
                     )
 
                 used_positions.add(key)
+
+    def _add_dual_probability_legend(
+        self,
+        fig: plt.Figure,
+        colormap: str
+    ):
+        """
+        Add legend explaining dual probability coloring.
+        """
+        from matplotlib.cm import get_cmap
+        from matplotlib.colors import Normalize
+        import matplotlib.patches as mpatches
+
+        cmap = get_cmap(colormap)
+        norm = Normalize(vmin=0, vmax=1)
+
+        # Create colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        # Add colorbar with dual labels
+        cbar_ax = fig.add_axes([0.92, 0.3, 0.02, 0.4])  # [left, bottom, width, height]
+        cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
+        cbar.set_label('Probability', fontsize=10)
+
+        # Add text explaining what the colors mean
+        fig.text(0.91, 0.75, 'Color meanings:', fontsize=9, ha='right', weight='bold')
+        fig.text(0.91, 0.72, '• Segments: transition freq', fontsize=8, ha='right')
+        fig.text(0.91, 0.70, '• Token bg: within-particle prob', fontsize=8, ha='right')
 
     def _add_probability_colorbar(
         self,
