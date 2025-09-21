@@ -2,7 +2,7 @@
 Visualization tools for token sequences and particle paths.
 
 Provides multiple visualization types:
-- Sankey-like diagrams for token generation paths
+- Bumplot diagrams for token generation paths
 - Probability heatmaps
 - Divergence plots
 - Token distribution visualizations
@@ -80,115 +80,19 @@ class TokenSequenceVisualizer:
         particles: List[Particle],
         prompt: str,
         output_path: Optional[str] = None,
-        title: Optional[str] = None,
-        highlight_most_probable: bool = True
+        **kwargs
     ) -> plt.Figure:
         """
-        Create a Sankey-like visualization of token sequences.
-        
-        Args:
-            particles: List of particles from the filter
-            prompt: Initial prompt
-            output_path: Path to save the figure
-            title: Plot title
-            highlight_most_probable: Whether to highlight the most probable path
-            
-        Returns:
-            Matplotlib figure
+        Deprecated: Use visualize_bumplot instead.
+        This method now redirects to visualize_bumplot for backwards compatibility.
         """
-        fig, ax = plt.subplots(figsize=self.figsize)
-        
-        if title is None:
-            title = f"Token Generation Paths: \"{prompt}\""
-        
-        # Find the maximum sequence length
-        max_length = min(
-            max(len(p.tokens) for p in particles),
-            self.max_tokens_display
+        return self.visualize_bumplot(
+            particles=particles,
+            prompt=prompt,
+            output_path=output_path,
+            **kwargs
         )
-        
-        # Find the most probable particle
-        most_probable_idx = None
-        if highlight_most_probable and particles:
-            log_probs = [p.log_prob for p in particles]
-            most_probable_idx = np.argmax(log_probs)
-        
-        # Draw paths for each particle
-        for i, particle in enumerate(particles):
-            # Create path coordinates
-            x_coords = []
-            y_coords = []
-            
-            for t in range(min(len(particle.tokens), max_length)):
-                x_coords.append(t)
-                # Map token to y-position (spread tokens vertically)
-                # Use token ID modulo to distribute tokens
-                y_pos = (particle.tokens[t] % 1000) / 10.0 - 50.0
-                y_coords.append(y_pos)
-            
-            # Determine if this is the most probable path
-            is_most_probable = (i == most_probable_idx)
-            
-            # Set line properties
-            if is_most_probable:
-                color = 'red'
-                alpha = 1.0
-                linewidth = 2.0
-                zorder = 1000  # Draw on top
-            else:
-                color = 'black'
-                alpha = self.alpha
-                linewidth = self.line_width
-                zorder = 1
-            
-            # Draw the path
-            if len(x_coords) > 1:
-                ax.plot(x_coords, y_coords, 
-                       color=color, alpha=alpha, linewidth=linewidth,
-                       zorder=zorder)
-        
-        # Add token labels for the most probable sequence
-        if highlight_most_probable and most_probable_idx is not None:
-            most_probable_particle = particles[most_probable_idx]
-            
-            # Add text below the plot showing the most probable sequence
-            text = self.tokenizer.decode(most_probable_particle.tokens[:max_length])
-            ax.text(0.5, -0.15, f"Most probable sequence: {text}",
-                   transform=ax.transAxes,
-                   ha='center', va='top',
-                   fontsize=10,
-                   bbox=dict(boxstyle="round,pad=0.5", facecolor='white', alpha=0.8))
-        
-        # Set axis properties
-        ax.set_xlim(-0.5, max_length - 0.5)
-        ax.set_ylim(-60, 60)
-        ax.set_xlabel("Token Position", fontsize=12)
-        ax.set_ylabel("Token Space", fontsize=12)
-        ax.set_title(title, fontsize=14, fontweight='bold')
-        
-        # Remove y-axis ticks (too many tokens to label)
-        ax.set_yticks([])
-        
-        # Add grid
-        ax.grid(True, axis='x', alpha=0.3)
-        
-        # Add legend
-        ax.text(
-            0.02, 0.98,
-            f"Particles: {len(particles)}",
-            transform=ax.transAxes,
-            fontsize=10,
-            verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        )
-        
-        plt.tight_layout()
-        
-        if output_path:
-            plt.savefig(output_path, dpi=self.save_dpi, bbox_inches='tight')
 
-        return fig
-    
     def visualize_probability_heatmap(
         self,
         particles: List[Particle],

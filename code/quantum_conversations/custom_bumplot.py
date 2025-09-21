@@ -99,12 +99,15 @@ def create_custom_bumplot(
                         x_segment = np.concatenate([x_segment, x_overlap])
                         y_segment = np.concatenate([y_segment, y_overlap])
 
-                    # Plot this segment with explicit alpha
-                    # Force matplotlib to use alpha blending
-                    line, = ax.plot(x_segment, y_segment, color=color,
-                                   linewidth=linewidth, solid_capstyle='round',
-                                   solid_joinstyle='round', zorder=100)
-                    line.set_alpha(alpha)  # Explicitly set alpha on line object
+                    # Plot this segment with forced transparency
+                    # Use RGBA color to ensure alpha is applied
+                    import matplotlib.colors as mcolors
+                    rgba_color = list(mcolors.to_rgba(color))
+                    rgba_color[3] = alpha  # Force alpha channel
+
+                    ax.plot(x_segment, y_segment, color=rgba_color,
+                           linewidth=linewidth, solid_capstyle='round',
+                           solid_joinstyle='round', zorder=100)
 
             except Exception as e:
                 # Fallback to linear segments
