@@ -21,7 +21,7 @@ def create_custom_bumplot(
     metadata: Dict,
     ax: plt.Axes,
     colormap: str = 'RdYlGn',
-    alpha: float = 0.8,
+    alpha: float = 0.5,  # Reduced alpha as requested
     linewidth: float = 2.5,
     curve_force: float = 0.3
 ) -> None:
@@ -64,41 +64,45 @@ def create_custom_bumplot(
         x = trajectory['timestep'].values
         y = trajectory[col].values
 
-        # First, create smooth interpolation for the ENTIRE trajectory
-        # This prevents overshooting
+        # Create smooth curves without overshooting
         if len(x) > 2:
-            # Use cubic interpolation for the whole path
             try:
-                # Create interpolation function for entire trajectory
-                f = interp1d(x, y, kind='quadratic', fill_value='extrapolate')
-
-                # Generate smooth points for entire trajectory
-                x_smooth_full = np.linspace(x[0], x[-1], len(x) * 20)
-                y_smooth_full = f(x_smooth_full)
-
-                # Now draw segments with appropriate colors
+                # For each segment, create a smooth curve
                 for i in range(len(x) - 1):
-                    # Get segment boundaries
-                    mask = (x_smooth_full >= x[i]) & (x_smooth_full <= x[i+1])
-                    x_segment = x_smooth_full[mask]
-                    y_segment = y_smooth_full[mask]
-
                     # Get transition frequency for coloring
                     from_rank = int(y[i])
                     to_rank = int(y[i+1])
                     timestep = int(x[i])
 
-                    # Look up transition frequency
                     transition_key = (timestep, from_rank, to_rank)
                     freq = transition_freqs.get(transition_key, 0.0)
-
-                    # Determine color based on frequency
                     color = cmap(norm(freq))
 
-                    # Plot this segment with appropriate color
+                    # Create smooth S-curve between points
+                    n_points = 50
+                    t = np.linspace(0, 1, n_points)
+
+                    # Use sigmoid for smooth transitions without overshooting
+                    steepness = 5
+                    transition = 1 / (1 + np.exp(-steepness * (t - 0.5) * 2))
+
+                    x_segment = x[i] + t * (x[i+1] - x[i])
+                    y_segment = y[i] + transition * (y[i+1] - y[i])
+
+                    # Add overlap to prevent gaps
+                    if i < len(x) - 2:
+                        # Extend slightly into next segment
+                        overlap_points = 2
+                        t_overlap = np.linspace(0, 0.05, overlap_points)
+                        x_overlap = x[i+1] + t_overlap * (x[i+2] - x[i+1])
+                        y_overlap = y[i+1] + t_overlap * 0  # Stay at same rank initially
+                        x_segment = np.concatenate([x_segment, x_overlap])
+                        y_segment = np.concatenate([y_segment, y_overlap])
+
+                    # Plot this segment
                     ax.plot(x_segment, y_segment, color=color, alpha=alpha,
                            linewidth=linewidth, solid_capstyle='round',
-                           solid_joinstyle='round')
+                           solid_joinstyle='round', zorder=100)  # Below labels
 
             except Exception as e:
                 # Fallback to linear segments
@@ -344,8 +348,17 @@ def add_token_labels(
             # Calculate colors
             # Background: within-particle probability
             bg_color = cmap(norm(info['avg_within_prob']))
-            # Make more transparent for lower frequency
-            bg_alpha = 0.3 + info['frequency_pct'] * 0.5
+            # Opaque background for readability
+            bg_alpha = 1.0
+
+            # Determine text color based on background brightness
+            # Convert to RGB for brightness calculation
+            import matplotlib.colors as mcolors
+            rgb = mcolors.to_rgb(bg_color)
+            # Calculate perceived brightness (weighted average)
+            brightness = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+            # Use white text on dark backgrounds, black on light
+            text_color = 'white' if brightness < 0.5 else 'black'
 
             # Find non-overlapping position
             base_x = timestep
@@ -395,18 +408,11 @@ def add_token_labels(
                 # Skip this label if no position found
                 continue
 
-            # Larger font size for better readability
-            if info['frequency_pct'] > 0.5:
-                fontsize = 11
-                weight = 'bold'
-            elif info['frequency_pct'] > 0.2:
-                fontsize = 10
-                weight = 'semibold'
-            else:
-                fontsize = 9
-                weight = 'normal'
+            # Uniform font size for all tokens
+            fontsize = 12  # Increased and uniform
+            weight = 'normal'  # Consistent weight
 
-            # Add token label
+            # Add token label with opaque background
             text_obj = ax.text(
                 test_x,
                 test_y,
@@ -415,14 +421,15 @@ def add_token_labels(
                 ha='center',
                 va='center',
                 weight=weight,
+                color=text_color,  # Smart color selection
                 bbox=dict(
-                    boxstyle='round,pad=0.15',
+                    boxstyle='round,pad=0.2',
                     facecolor=to_hex(bg_color),
-                    edgecolor='#333333',
-                    alpha=bg_alpha,
-                    linewidth=0.5 if info['frequency_pct'] < 0.3 else 0.8
+                    edgecolor='none',  # No border for cleaner look
+                    alpha=bg_alpha,  # Fully opaque
+                    linewidth=0
                 ),
-                zorder=2000 - rank  # Higher frequency on top
+                zorder=10000  # Above everything else
             )
 
             # Add to placed boxes

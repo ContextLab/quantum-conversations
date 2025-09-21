@@ -391,21 +391,28 @@ class TokenSequenceVisualizer:
                 ranks_used.update(df[col].dropna().unique())
 
         if ranks_used:
-            max_rank_used = int(max(ranks_used))
-            # Set y limits with rank 1 at top
-            ax.set_ylim(max_rank_used + 0.5, 0.5)  # This puts rank 1 at top
+            # Filter out any out-of-range ranks
+            valid_ranks = [r for r in ranks_used if 1 <= r <= max_vocab_display]
+            if valid_ranks:
+                max_rank_used = int(max(valid_ranks))
+                # Set y limits with rank 1 at top, tighter bounds
+                ax.set_ylim(max_rank_used + 0.3, 0.7)  # Tighter bounds
 
-            # Set reasonable number of y-ticks
-            n_ticks = min(max_rank_used, 15)
-            ax.set_yticks(range(1, n_ticks + 1))
-            ax.set_yticklabels(range(1, n_ticks + 1))
+                # Set reasonable number of y-ticks
+                n_ticks = min(max_rank_used, max_vocab_display)
+                ax.set_yticks(range(1, n_ticks + 1))
+                ax.set_yticklabels(range(1, n_ticks + 1))
+            else:
+                ax.set_ylim(max_vocab_display + 0.3, 0.7)
+                ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
         else:
-            ax.set_ylim(max_vocab_display + 0.5, 0.5)
+            ax.set_ylim(max_vocab_display + 0.3, 0.7)
             ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
 
-        # Customize plot appearance
-        ax.set_xlabel('Output position', fontsize=12)
-        ax.set_ylabel('Token rank (by frequency)', fontsize=12)
+        # Customize plot appearance with larger fonts
+        ax.set_xlabel('Output position', fontsize=14)
+        ax.set_ylabel('Token rank (by frequency)', fontsize=14)
+        ax.tick_params(axis='both', labelsize=12)  # Larger tick labels
 
         # No title per requirements
 
@@ -813,9 +820,17 @@ class TokenSequenceVisualizer:
         # Clear the full-height axis
         cbar_ax.set_visible(False)
 
-        # Create new smaller axis for colorbar
-        # Position at bottom 1/3, make it narrower
-        small_cbar_ax = fig.add_axes([0.92, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
+        # Get main axis position for alignment
+        main_axes = [ax for ax in fig.get_axes() if ax != cbar_ax]
+        if main_axes:
+            main_ax = main_axes[0]
+            ax_pos = main_ax.get_position()
+        else:
+            ax_pos = None
+
+        # Create new smaller axis for colorbar, closer to main plot
+        # Position at bottom 1/3, narrow, closer to main plot
+        small_cbar_ax = fig.add_axes([0.86, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
 
         # Create colorbar in the smaller axis
         cbar = ColorbarBase(
@@ -825,12 +840,25 @@ class TokenSequenceVisualizer:
             orientation='vertical'
         )
 
-        # Only show 0% and 100% labels
+        # Remove inline tick labels
         cbar.set_ticks([0, 1])
-        cbar.ax.set_yticklabels(['0%', '100%'], fontsize=9)
+        cbar.ax.set_yticklabels([])  # No inline labels
         cbar.ax.tick_params(size=0)  # Hide tick marks
 
-        # No title, no additional text per requirements
+        # Add labels above and below colorbar
+        cbar_pos = small_cbar_ax.get_position()
+        label_x = cbar_pos.x0 + cbar_pos.width / 2
+
+        # Position 0% label aligned with x-axis if possible
+        if ax_pos:
+            label_y_bottom = ax_pos.y0
+        else:
+            label_y_bottom = cbar_pos.y0 - 0.02
+
+        fig.text(label_x, label_y_bottom, '0%', ha='center', va='bottom', fontsize=10)
+
+        # Position 100% label above colorbar
+        fig.text(label_x, cbar_pos.y1 + 0.01, '100%', ha='center', va='bottom', fontsize=10)
 
     def _add_dual_probability_legend(
         self,
