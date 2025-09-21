@@ -21,7 +21,7 @@ def create_custom_bumplot(
     metadata: Dict,
     ax: plt.Axes,
     colormap: str = 'RdYlGn',
-    alpha: float = 0.2,  # Lower alpha for better transparency visibility
+    alpha: float = 0.1,  # Very low alpha to test transparency
     linewidth: float = 2.5,
     curve_force: float = 0.3
 ) -> None:
@@ -100,9 +100,11 @@ def create_custom_bumplot(
                         y_segment = np.concatenate([y_segment, y_overlap])
 
                     # Plot this segment with explicit alpha
-                    ax.plot(x_segment, y_segment, color=color, alpha=alpha,
-                           linewidth=linewidth, solid_capstyle='round',
-                           solid_joinstyle='round', zorder=100, rasterized=False)  # Below labels
+                    # Force matplotlib to use alpha blending
+                    line, = ax.plot(x_segment, y_segment, color=color,
+                                   linewidth=linewidth, solid_capstyle='round',
+                                   solid_joinstyle='round', zorder=100)
+                    line.set_alpha(alpha)  # Explicitly set alpha on line object
 
             except Exception as e:
                 # Fallback to linear segments

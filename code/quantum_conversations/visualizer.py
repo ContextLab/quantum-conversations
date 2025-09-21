@@ -589,6 +589,9 @@ class TokenSequenceVisualizer:
                     token_id = particle.tokens[t]
                     # Use the rank map to ensure consistency
                     rank = position_ranks[t].get(token_id, max_vocab_display + 1)
+                    # Clamp rank to max_vocab_display to prevent out-of-range curves
+                    if rank > max_vocab_display:
+                        rank = max_vocab_display  # Put overflow at the max visible rank
                     trajectory.append(float(rank))  # Use float for smoother curves
                 else:
                     trajectory.append(np.nan)
@@ -830,7 +833,7 @@ class TokenSequenceVisualizer:
 
         # Create new smaller axis for colorbar with small gap from main plot
         # Position at bottom 1/3, narrow, with appropriate spacing
-        small_cbar_ax = fig.add_axes([0.90, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
+        small_cbar_ax = fig.add_axes([0.88, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
 
         # Create colorbar in the smaller axis
         cbar = ColorbarBase(
