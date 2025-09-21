@@ -301,12 +301,13 @@ class TokenSequenceVisualizer:
         self,
         particles: List[Particle],
         output_path: Optional[str] = None,
-        max_vocab_display: int = 100,
+        max_vocab_display: int = 15,
         color_by: str = 'transition_prob',
         show_tokens: bool = True,
         curve_force: float = 0.5,
         figsize: Optional[Tuple[int, int]] = None,
         colormap: str = 'RdYlGn',
+        prompt: Optional[str] = None,
         **kwargs
     ) -> plt.Figure:
         """
@@ -320,7 +321,9 @@ class TokenSequenceVisualizer:
             show_tokens: Whether to show token text labels
             curve_force: Intensity of curve bending (0-1)
             figsize: Figure size override
-            **kwargs: Additional args passed to bumplot
+            colormap: Colormap for probability display
+            prompt: Original prompt for title
+            **kwargs: Additional args
 
         Returns:
             Matplotlib figure with bump plot
@@ -336,75 +339,114 @@ class TokenSequenceVisualizer:
             logger.warning("No data to visualize in bumplot")
             return plt.figure()
 
-        # Set up figure
+        # Set up figure with proper layout
         if figsize is None:
-            figsize = self.figsize
-        fig, ax = plt.subplots(figsize=figsize)
+            figsize = (18, 10)  # Default size for good visibility
 
-        # Get color mapping based on selected method
-        colors = self._get_bumplot_colors(particles, metadata, color_by)
+        # Create figure with gridspec for better layout control
+        fig = plt.figure(figsize=figsize)
+        from matplotlib.gridspec import GridSpec
 
-        # Get particle column names (excluding 'timestep')
-        particle_columns = [col for col in df.columns if col.startswith('particle_')]
+        # Create grid: main plot + colorbar space
+        gs = GridSpec(1, 2, width_ratios=[15, 1], figure=fig)
+        ax = fig.add_subplot(gs[0, 0])
 
-        # Use custom bumplot with per-segment coloring
+        # Use custom bumplot with smooth curves
         try:
-            from .custom_bumplot import create_custom_bumplot, prepare_transition_data, add_token_labels
+            from .custom_bumplot import create_custom_bumplot, add_token_labels
 
-            # Prepare data with transition frequencies
-            df_custom, metadata_custom = prepare_transition_data(particles, max_timesteps=len(df))
-
-            # Create custom bumplot
+            # Create custom bumplot with smooth splines
             create_custom_bumplot(
-                df_custom,
-                metadata_custom,
+                df,
+                metadata,
                 ax,
                 colormap=colormap,
                 alpha=0.6,
-                linewidth=1.0
+                linewidth=1.0,
+                curve_force=curve_force
             )
 
-            # Update metadata for token labels
-            metadata.update(metadata_custom)
             metadata['colormap_name'] = colormap
 
         except Exception as e:
             logger.warning(f"Using fallback bumplot: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback to simple plotting
+            particle_columns = [col for col in df.columns if col.startswith('particle_')]
             for col in particle_columns:
                 trajectory = df[['timestep', col]].dropna()
                 if len(trajectory) > 1:
                     ax.plot(trajectory['timestep'], trajectory[col],
                            alpha=0.3, linewidth=0.5, color='steelblue')
 
-        # Customize plot
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('Token Rank', fontsize=12)
-        ax.set_title('Particle Token Trajectories (Bump Plot)', fontsize=14, fontweight='bold')
+        # Set proper axis limits based on actual data
+        max_timestep = metadata.get('max_length', len(df)) - 1
+        ax.set_xlim(-0.5, max_timestep + 0.5)
 
-        # Set y-axis ticks to show ranks (1 at top)
-        max_rank = metadata.get('max_vocab_display', 20)
-        ax.set_yticks(range(1, min(max_rank + 1, 21)))  # Show up to 20 ranks
-        ax.set_yticklabels(range(1, min(max_rank + 1, 21)))
+        # Calculate actual ranks used
+        ranks_used = set()
+        for col in df.columns:
+            if col.startswith('particle_'):
+                ranks_used.update(df[col].dropna().unique())
+
+        if ranks_used:
+            max_rank_used = int(max(ranks_used))
+            # Set y limits with small padding
+            ax.set_ylim(min(max_rank_used + 0.5, max_vocab_display + 0.5), 0.5)
+
+            # Set reasonable number of y-ticks
+            n_ticks = min(max_rank_used, 15)
+            ax.set_yticks(range(1, n_ticks + 1))
+            ax.set_yticklabels(range(1, n_ticks + 1))
+        else:
+            ax.set_ylim(max_vocab_display + 0.5, 0.5)
+            ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
+
         ax.invert_yaxis()  # Rank 1 at top
-        ax.set_ylim(min(max_rank + 0.5, 20.5), 0.5)  # Set limits
 
-        # Overlay token labels on the plot if requested
+        # Customize plot appearance
+        ax.set_xlabel('Time Step', fontsize=12)
+        ax.set_ylabel('Token Rank (by frequency)', fontsize=12)
+
+        # Create informative title
+        if prompt:
+            title = f'Token Trajectories: "{prompt[:50]}..."' if len(prompt) > 50 else f'Token Trajectories: "{prompt}"'
+        else:
+            title = 'Particle Token Trajectories (Bump Plot)'
+
+        n_particles = metadata.get('n_particles', len(particles))
+        title += f'\n({n_particles} particles, max {max_vocab_display} tokens shown per timestep)'
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+
+        # Add grid for better readability
+        ax.grid(True, axis='x', alpha=0.3, linestyle=':')
+        ax.grid(True, axis='y', alpha=0.2, linestyle=':')
+
+        # Add token labels if requested
         if show_tokens:
             try:
                 from .custom_bumplot import add_token_labels
-                add_token_labels(ax, metadata, self.tokenizer,
-                               colormap=metadata.get('colormap_name', 'RdYlGn'),
-                               show_freq=True)
+                add_token_labels(
+                    ax,
+                    metadata,
+                    self.tokenizer,
+                    colormap=colormap,
+                    show_freq=True,
+                    min_freq_threshold=0.05,
+                    max_labels_per_timestep=min(10, max_vocab_display)
+                )
             except Exception as e:
-                logger.warning(f"Using fallback token labels: {e}")
-                # Fallback to old method
-                self._overlay_token_labels(ax, df, metadata, max_length=len(df))
+                logger.warning(f"Token label error: {e}")
+                # Use simplified fallback
+                self._overlay_token_labels(ax, df, metadata, max_length=max_timestep + 1)
 
-        # Add colorbar legend for probabilities
-        if show_tokens or color_by == 'transition_prob':
-            self._add_dual_probability_legend(fig, colormap)
+        # Add proper dual probability legend
+        if color_by == 'transition_prob' or show_tokens:
+            cbar_ax = fig.add_subplot(gs[0, 1])
+            self._add_dual_probability_legend_improved(fig, cbar_ax, colormap)
 
+        # Adjust layout to prevent overlap
         plt.tight_layout()
 
         if output_path:
@@ -420,6 +462,7 @@ class TokenSequenceVisualizer:
         """
         Transform particle data into bumplot-compatible format.
         Ranks tokens at each position by cross-particle frequency.
+        Ensures particles with identical tokens converge to same rank.
 
         Returns:
             - DataFrame with columns: ['timestep', 'particle_0', 'particle_1', ...]
@@ -457,6 +500,8 @@ class TokenSequenceVisualizer:
         # Compute cross-particle ranks at each position
         position_ranks = {}
         token_metadata = {}
+        token_to_text = {}  # Cache for decoded tokens
+        transition_probs = {}  # Store transition probabilities
 
         for t in range(max_length):
             # Count frequency of each token at this position
@@ -465,25 +510,33 @@ class TokenSequenceVisualizer:
                 token_counts[token_id] = len(particle_list)
 
             # Rank tokens by frequency (most common = rank 1)
+            # Use stable sort to ensure consistent ranking
             ranked_tokens = sorted(token_counts.items(), key=lambda x: (-x[1], x[0]))
 
             # Only keep top max_vocab_display tokens
             ranked_tokens = ranked_tokens[:max_vocab_display]
 
-            # Assign ranks
+            # Assign ranks - particles with same token MUST get same rank
             rank_map = {}
             for rank, (token_id, count) in enumerate(ranked_tokens, 1):
                 rank_map[token_id] = rank
 
-                # Decode token text
-                try:
-                    token_text = self.tokenizer.decode([token_id])
-                    # Clean up token text
-                    token_text = token_text.strip().replace('\n', '↵').replace('\t', '→')
-                    if len(token_text) > 12:
-                        token_text = token_text[:10] + '..'
-                except:
-                    token_text = f"<{token_id}>"
+                # Decode token text (cache for efficiency)
+                if token_id not in token_to_text:
+                    try:
+                        token_text = self.tokenizer.decode([token_id])
+                        # Escape special characters that might be interpreted as LaTeX
+                        token_text = token_text.replace('$', r'\$').replace('\\', r'\\\\')
+                        # Clean up token text
+                        token_text = token_text.strip().replace('\n', '[nl]').replace('\t', '[tab]')
+                        # Better truncation that preserves meaning
+                        if len(token_text) > 10:
+                            token_text = token_text[:8] + '..'
+                    except Exception as e:
+                        token_text = f"<{token_id}>"
+                    token_to_text[token_id] = token_text
+                else:
+                    token_text = token_to_text[token_id]
 
                 # Calculate average within-particle probability
                 avg_prob = np.mean([
@@ -503,17 +556,37 @@ class TokenSequenceVisualizer:
 
             position_ranks[t] = rank_map
 
+        # Calculate transition probabilities between timesteps
+        for t in range(max_length - 1):
+            transition_counts = Counter()
+            for particle_idx, particle in enumerate(particles):
+                if t < len(particle.tokens) - 1:
+                    from_token = particle.tokens[t]
+                    to_token = particle.tokens[t + 1]
+
+                    from_rank = position_ranks[t].get(from_token, max_vocab_display + 1)
+                    to_rank = position_ranks[t + 1].get(to_token, max_vocab_display + 1)
+
+                    if from_rank <= max_vocab_display and to_rank <= max_vocab_display:
+                        transition_counts[(t, from_rank, to_rank)] += 1
+
+            # Normalize to get probabilities
+            for key, count in transition_counts.items():
+                transition_probs[key] = count / len(particles)
+
         # Create DataFrame with particle trajectories
         data = {'timestep': list(range(max_length))}
 
         # Track each particle's path through the ranks
+        # IMPORTANT: Particles with identical tokens must have identical trajectories
         for particle_idx, particle in enumerate(particles):
             trajectory = []
             for t in range(max_length):
                 if t < len(particle.tokens):
                     token_id = particle.tokens[t]
+                    # Use the rank map to ensure consistency
                     rank = position_ranks[t].get(token_id, max_vocab_display + 1)
-                    trajectory.append(rank)
+                    trajectory.append(float(rank))  # Use float for smoother curves
                 else:
                     trajectory.append(np.nan)
 
@@ -526,7 +599,11 @@ class TokenSequenceVisualizer:
             'position_ranks': position_ranks,
             'n_particles': len(particles),
             'max_length': max_length,
-            'max_vocab_display': max_vocab_display
+            'max_vocab_display': max_vocab_display,
+            'token_to_text': token_to_text,
+            'transition_probs': transition_probs,
+            'token_ranks': {token: rank for ranks in position_ranks.values()
+                          for token, rank in ranks.items()}  # Flattened rank map
         }
 
         return df, metadata
@@ -716,34 +793,90 @@ class TokenSequenceVisualizer:
 
                 used_positions.add(key)
 
+    def _add_dual_probability_legend_improved(
+        self,
+        fig: plt.Figure,
+        cbar_ax: plt.Axes,
+        colormap: str
+    ):
+        """
+        Add improved legend explaining dual probability coloring.
+        Places colorbar in dedicated axis to avoid overlap.
+        """
+        from matplotlib.colors import Normalize
+        from matplotlib.colorbar import ColorbarBase
+        import matplotlib.pyplot as plt
+
+        cmap = plt.colormaps[colormap]
+        norm = Normalize(vmin=0, vmax=1)
+
+        # Create colorbar in the provided axis
+        cbar = ColorbarBase(
+            cbar_ax,
+            cmap=cmap,
+            norm=norm,
+            orientation='vertical'
+        )
+
+        # Set colorbar properties
+        cbar.set_label('Probability', fontsize=10, labelpad=10)
+        cbar.ax.tick_params(labelsize=8)
+
+        # Format tick labels as percentages
+        ticks = [0, 0.25, 0.5, 0.75, 1.0]
+        cbar.set_ticks(ticks)
+        cbar.ax.set_yticklabels([f'{int(t*100)}%' for t in ticks])
+
+        # Add legend title above colorbar
+        cbar_ax.text(0.5, 1.05, 'Color Scale', transform=cbar_ax.transAxes,
+                    ha='center', fontsize=9, weight='bold')
+
+        # Add explanatory text below colorbar
+        legend_text = (
+            "Curve segments:\n"
+            "  Transition frequency\n"
+            "  (% of particles)\n\n"
+            "Token backgrounds:\n"
+            "  Within-particle\n"
+            "  probability\n"
+            "  (model confidence)"
+        )
+
+        cbar_ax.text(0.5, -0.1, legend_text, transform=cbar_ax.transAxes,
+                    ha='center', va='top', fontsize=7, linespacing=1.5)
+
     def _add_dual_probability_legend(
         self,
         fig: plt.Figure,
         colormap: str
     ):
         """
-        Add legend explaining dual probability coloring.
+        Legacy method for backwards compatibility.
         """
-        from matplotlib.cm import get_cmap
         from matplotlib.colors import Normalize
-        import matplotlib.patches as mpatches
+        import matplotlib.pyplot as plt
 
-        cmap = get_cmap(colormap)
+        cmap = plt.colormaps[colormap]
         norm = Normalize(vmin=0, vmax=1)
 
         # Create colorbar
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
 
-        # Add colorbar with dual labels
-        cbar_ax = fig.add_axes([0.92, 0.3, 0.02, 0.4])  # [left, bottom, width, height]
-        cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
-        cbar.set_label('Probability', fontsize=10)
+        # Try to find available space for colorbar
+        try:
+            # Add colorbar to the right of the plot
+            cbar_ax = fig.add_axes([0.92, 0.3, 0.02, 0.4])
+            cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
+            cbar.set_label('Probability', fontsize=10)
 
-        # Add text explaining what the colors mean
-        fig.text(0.91, 0.75, 'Color meanings:', fontsize=9, ha='right', weight='bold')
-        fig.text(0.91, 0.72, '• Segments: transition freq', fontsize=8, ha='right')
-        fig.text(0.91, 0.70, '• Token bg: within-particle prob', fontsize=8, ha='right')
+            # Add explanatory text
+            fig.text(0.91, 0.75, 'Colors:', fontsize=9, ha='right', weight='bold')
+            fig.text(0.91, 0.72, 'Curves: transition freq', fontsize=8, ha='right')
+            fig.text(0.91, 0.70, 'Tokens: confidence', fontsize=8, ha='right')
+        except:
+            # Fallback if figure layout doesn't support it
+            pass
 
     def _add_probability_colorbar(
         self,

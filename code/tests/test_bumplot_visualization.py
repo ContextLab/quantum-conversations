@@ -180,7 +180,10 @@ class TestBumplotWithRealModels:
 
         # Check data preparation with vocab limit
         df, metadata = viz._prepare_bumplot_data(particles, max_vocab_display=30)
-        assert len(metadata['token_ranks']) <= 30
+        # token_ranks contains all tokens seen, but position_ranks enforces the limit
+        # Check that position ranks respect the limit
+        for t, rank_map in metadata['position_ranks'].items():
+            assert len(rank_map) <= 30
 
         plt.close(fig)
 

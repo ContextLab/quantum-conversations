@@ -22,10 +22,11 @@ def create_custom_bumplot(
     ax: plt.Axes,
     colormap: str = 'RdYlGn',
     alpha: float = 0.7,
-    linewidth: float = 1.5
+    linewidth: float = 1.5,
+    curve_force: float = 0.5
 ) -> None:
     """
-    Create custom bumplot with per-segment coloring.
+    Create custom bumplot with smooth spline curves and per-segment coloring.
 
     Args:
         df: DataFrame with particle trajectories
@@ -34,34 +35,52 @@ def create_custom_bumplot(
         colormap: Colormap to use for probabilities
         alpha: Line transparency
         linewidth: Line width
+        curve_force: Intensity of curve bending (0-1)
     """
-    from matplotlib.cm import get_cmap
     from matplotlib.colors import to_hex
+    from matplotlib.collections import LineCollection
+    from scipy.interpolate import make_interp_spline
+    import matplotlib.pyplot as plt
 
-    cmap = get_cmap(colormap)
+    cmap = plt.colormaps[colormap]
     norm = Normalize(vmin=0, vmax=1)
 
     # Get transition frequencies from metadata
     transition_freqs = metadata.get('transition_frequencies', {})
+    transition_probs = metadata.get('transition_probs', {})
 
-    # Plot each particle trajectory
+    # Use transition_probs if available, fall back to transition_freqs
+    if transition_probs:
+        transition_freqs = transition_probs
+
+    # Plot each particle trajectory with smooth curves
     particle_cols = [c for c in df.columns if c.startswith('particle_')]
 
+    # Group particles by their trajectories to ensure identical paths converge
+    trajectory_groups = defaultdict(list)
     for col in particle_cols:
         trajectory = df[['timestep', col]].dropna()
+        if len(trajectory) >= 2:
+            # Create a hashable key from the trajectory
+            traj_key = tuple(zip(trajectory['timestep'].values, trajectory[col].values))
+            trajectory_groups[traj_key].append(col)
 
-        if len(trajectory) < 2:
+    # Plot each unique trajectory
+    for traj_key, particle_list in trajectory_groups.items():
+        # Convert back to arrays
+        points = np.array(traj_key)
+        x = points[:, 0]
+        y = points[:, 1]
+
+        if len(x) < 2:
             continue
 
-        x = trajectory['timestep'].values
-        y = trajectory[col].values
-
-        # Create segments with colors based on transition frequency
+        # Create smooth segments between each pair of points
         for i in range(len(x) - 1):
-            x_seg = [x[i], x[i+1]]
-            y_seg = [y[i], y[i+1]]
+            x_seg = np.array([x[i], x[i+1]])
+            y_seg = np.array([y[i], y[i+1]])
 
-            # Get transition frequency for this segment
+            # Get transition frequency for coloring
             from_rank = int(y[i])
             to_rank = int(y[i+1])
             timestep = int(x[i])
@@ -70,31 +89,66 @@ def create_custom_bumplot(
             transition_key = (timestep, from_rank, to_rank)
             freq = transition_freqs.get(transition_key, 0.0)
 
-            # Determine color based on frequency
+            # Determine color and width based on frequency
             color = cmap(norm(freq))
+            segment_width = linewidth * (0.3 + freq * 0.7)  # Scale by frequency
+            segment_alpha = alpha * (0.5 + freq * 0.5)  # More opaque for common transitions
 
             # Create smooth curve between points
-            if abs(y_seg[1] - y_seg[0]) > 0.01:  # Only curve if there's movement
-                try:
-                    # Create smooth interpolation
-                    x_smooth = np.linspace(x_seg[0], x_seg[1], 20)
-                    # Add curvature
-                    t = np.linspace(0, 1, 20)
-                    curve_factor = 0.5  # How much to curve
-                    x_curved = x_seg[0] + t * (x_seg[1] - x_seg[0])
-                    y_curved = y_seg[0] + t * (y_seg[1] - y_seg[0])
-                    # Add sinusoidal curve
-                    offset = curve_factor * np.sin(t * np.pi) * (x_seg[1] - x_seg[0]) * 0.3
-                    x_curved = x_curved + offset * np.sign(y_seg[1] - y_seg[0]) * 0.2
+            rank_change = abs(y_seg[1] - y_seg[0])
 
-                    ax.plot(x_curved, y_curved, color=color, alpha=alpha,
-                           linewidth=linewidth * (0.5 + freq * 0.5))
-                except:
+            if rank_change > 0.1:  # Only curve if there's significant movement
+                try:
+                    # Use spline interpolation for smooth S-curves
+                    # Add control points for better curves
+                    control_offset = curve_force * 0.4  # How far to push control points
+
+                    # Create control points for cubic spline
+                    if rank_change > 2:  # Strong S-curve for large transitions
+                        # Add intermediate control points
+                        x_control = np.array([
+                            x_seg[0],
+                            x_seg[0] + (x_seg[1] - x_seg[0]) * 0.3,
+                            x_seg[0] + (x_seg[1] - x_seg[0]) * 0.7,
+                            x_seg[1]
+                        ])
+                        y_control = np.array([
+                            y_seg[0],
+                            y_seg[0],  # Hold at starting rank
+                            y_seg[1],  # Jump to ending rank
+                            y_seg[1]
+                        ])
+                    else:  # Gentle curve for small transitions
+                        x_control = np.array([x_seg[0], x_seg[0] + (x_seg[1]-x_seg[0])*0.5, x_seg[1]])
+                        y_control = np.array([y_seg[0], (y_seg[0] + y_seg[1])*0.5, y_seg[1]])
+
+                    # Create spline with appropriate degree
+                    k = min(3, len(x_control) - 1)  # Cubic or less
+                    if k >= 1:
+                        spl = make_interp_spline(x_control, y_control, k=k)
+
+                        # Generate smooth points
+                        x_smooth = np.linspace(x_seg[0], x_seg[1], 50)
+                        y_smooth = spl(x_smooth)
+
+                        # Plot the smooth curve
+                        ax.plot(x_smooth, y_smooth, color=color, alpha=segment_alpha,
+                               linewidth=segment_width, solid_capstyle='round',
+                               solid_joinstyle='round')
+                    else:
+                        # Fallback to straight line
+                        ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
+                               linewidth=segment_width)
+
+                except Exception as e:
+                    logger.debug(f"Spline interpolation failed: {e}, using straight line")
                     # Fallback to straight line
-                    ax.plot(x_seg, y_seg, color=color, alpha=alpha, linewidth=linewidth)
+                    ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
+                           linewidth=segment_width)
             else:
-                # Straight line for no rank change
-                ax.plot(x_seg, y_seg, color=color, alpha=alpha, linewidth=linewidth)
+                # Straight line for no/minimal rank change
+                ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
+                       linewidth=segment_width)
 
 
 def prepare_transition_data(
@@ -231,10 +285,13 @@ def add_token_labels(
     metadata: Dict,
     tokenizer,
     colormap: str = 'RdYlGn',
-    show_freq: bool = True
+    show_freq: bool = True,
+    min_freq_threshold: float = 0.05,
+    max_labels_per_timestep: int = 10
 ) -> None:
     """
-    Add token labels with background coloring based on within-particle probability.
+    Add token labels with smart positioning and background coloring.
+    Implements collision detection and priority-based label placement.
 
     Args:
         ax: Matplotlib axes
@@ -242,75 +299,177 @@ def add_token_labels(
         tokenizer: Tokenizer for decoding
         colormap: Same colormap as segments
         show_freq: Whether to show frequency percentages
+        min_freq_threshold: Minimum frequency to show label
+        max_labels_per_timestep: Maximum labels per timestep
     """
-    from matplotlib.cm import get_cmap
     from matplotlib.colors import to_hex
+    from matplotlib.patches import FancyBboxPatch
+    import matplotlib.transforms as transforms
+    import matplotlib.pyplot as plt
 
-    cmap = get_cmap(colormap)
+    cmap = plt.colormaps[colormap]
     norm = Normalize(vmin=0, vmax=1)
 
     token_metadata = metadata.get('token_metadata', {})
+    if not token_metadata:
+        return
 
-    # Track used positions
-    used_positions = set()
+    # Get axis limits for boundary checking
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
 
+    # Group tokens by timestep for better layout
+    timestep_tokens = defaultdict(list)
     for (timestep, rank), info in token_metadata.items():
-        # Skip low frequency tokens
-        if info['frequency_pct'] < 0.05 and rank > 10:
-            continue
+        timestep_tokens[timestep].append((rank, info))
 
-        # Decode token text
-        try:
-            token_text = tokenizer.decode([info['token_id']])
-            token_text = token_text.strip().replace('\n', '↵').replace('\t', '→')
-            if len(token_text) > 10:
-                token_text = token_text[:8] + '..'
-        except:
-            token_text = f"<{info['token_id']}>"
+    # Sort each timestep by frequency (highest first)
+    for timestep in timestep_tokens:
+        timestep_tokens[timestep].sort(key=lambda x: -x[1]['frequency_pct'])
 
-        # Background color based on within-particle probability
-        bg_color = cmap(norm(info['avg_within_prob']))
+    # Track bounding boxes for collision detection
+    placed_boxes = []
 
-        # Adjust position to avoid overlap
-        y_offset = 0
-        key = (timestep, rank)
-        for dy in [0, 0.3, -0.3, 0.6, -0.6]:
-            test_key = (timestep, rank + dy)
-            if test_key not in used_positions:
-                y_offset = dy
+    # Process each timestep
+    for timestep in sorted(timestep_tokens.keys()):
+        labels_added = 0
+
+        for rank, info in timestep_tokens[timestep]:
+            # Apply thresholds
+            if labels_added >= max_labels_per_timestep:
                 break
 
-        # Add token label
-        ax.text(
-            timestep,
-            rank + y_offset,
-            token_text,
-            fontsize=7 if info['frequency_pct'] > 0.1 else 6,
-            ha='center',
-            va='center',
-            weight='bold' if info['frequency_pct'] > 0.5 else 'normal',
-            bbox=dict(
-                boxstyle='round,pad=0.2',
-                facecolor=to_hex(bg_color),
-                edgecolor='black',
-                alpha=0.8,
-                linewidth=0.5
-            ),
-            zorder=1000 + (20 - rank)  # Higher ranks on top
-        )
+            # Always show high-frequency tokens (>20%)
+            # Show medium frequency (5-20%) if space available
+            # Skip very low frequency (<5%) unless top 5
+            if info['frequency_pct'] < 0.2:
+                if info['frequency_pct'] < min_freq_threshold and labels_added >= 5:
+                    continue
+                if rank > 10 and info['frequency_pct'] < 0.1:
+                    continue
 
-        # Add frequency annotation
-        if show_freq and info['frequency_pct'] > 0.15:
-            ax.text(
-                timestep,
-                rank + y_offset - 0.35,
-                f"{info['frequency_pct']:.0%}",
-                fontsize=5,
+            # Decode token text (use cache if available)
+            token_text = metadata.get('token_to_text', {}).get(info['token_id'])
+            if not token_text:
+                try:
+                    token_text = tokenizer.decode([info['token_id']])
+                    token_text = token_text.strip()
+                    # Better special character handling
+                    token_text = token_text.replace('\n', '↵').replace('\t', '→')
+                    token_text = token_text.replace('\r', '↲')
+                    # Smart truncation
+                    if len(token_text) > 10:
+                        # Try to break at word boundary
+                        if ' ' in token_text[:10]:
+                            token_text = token_text[:token_text[:10].rfind(' ')] + '..'
+                        else:
+                            token_text = token_text[:8] + '..'
+                    # Handle empty tokens
+                    if not token_text or token_text.isspace():
+                        token_text = '[space]'  # Text representation for space
+                except Exception as e:
+                    token_text = f"<{info['token_id']}>"
+
+            # Calculate colors
+            # Background: within-particle probability
+            bg_color = cmap(norm(info['avg_within_prob']))
+            # Make more transparent for lower frequency
+            bg_alpha = 0.3 + info['frequency_pct'] * 0.5
+
+            # Find non-overlapping position
+            base_x = timestep
+            base_y = rank
+
+            # Try different positions with smart offset
+            position_found = False
+            for attempt in range(5):
+                if attempt == 0:
+                    x_offset = 0
+                    y_offset = 0
+                elif attempt == 1:
+                    x_offset = 0.15 if timestep < xlim[1] - 0.5 else -0.15
+                    y_offset = 0
+                elif attempt == 2:
+                    x_offset = 0
+                    y_offset = 0.3 if rank < ylim[1] - 1 else -0.3
+                elif attempt == 3:
+                    x_offset = -0.15 if timestep > xlim[0] + 0.5 else 0.15
+                    y_offset = 0
+                else:
+                    x_offset = 0
+                    y_offset = -0.3 if rank > ylim[0] + 1 else 0.3
+
+                test_x = base_x + x_offset
+                test_y = base_y + y_offset
+
+                # Estimate text bbox (rough approximation)
+                text_width = len(token_text) * 0.08  # Approximate width
+                text_height = 0.3  # Approximate height
+                bbox = (test_x - text_width/2, test_y - text_height/2,
+                       test_x + text_width/2, test_y + text_height/2)
+
+                # Check for collisions
+                collision = False
+                for existing_box in placed_boxes:
+                    if (bbox[0] < existing_box[2] and bbox[2] > existing_box[0] and
+                        bbox[1] < existing_box[3] and bbox[3] > existing_box[1]):
+                        collision = True
+                        break
+
+                if not collision:
+                    position_found = True
+                    break
+
+            if not position_found:
+                # Skip this label if no position found
+                continue
+
+            # Determine font size based on importance
+            if info['frequency_pct'] > 0.5:
+                fontsize = 8
+                weight = 'bold'
+            elif info['frequency_pct'] > 0.2:
+                fontsize = 7
+                weight = 'semibold'
+            else:
+                fontsize = 6
+                weight = 'normal'
+
+            # Add token label
+            text_obj = ax.text(
+                test_x,
+                test_y,
+                token_text,
+                fontsize=fontsize,
                 ha='center',
-                va='top',
-                color='darkgray',
-                alpha=0.8,
-                zorder=999
+                va='center',
+                weight=weight,
+                bbox=dict(
+                    boxstyle='round,pad=0.15',
+                    facecolor=to_hex(bg_color),
+                    edgecolor='#333333',
+                    alpha=bg_alpha,
+                    linewidth=0.5 if info['frequency_pct'] < 0.3 else 0.8
+                ),
+                zorder=2000 - rank  # Higher frequency on top
             )
 
-        used_positions.add((timestep, rank + y_offset))
+            # Add to placed boxes
+            placed_boxes.append(bbox)
+            labels_added += 1
+
+            # Add frequency annotation for significant tokens
+            if show_freq and info['frequency_pct'] >= 0.2:
+                freq_text = f"{info['frequency_pct']:.0%}"
+                ax.text(
+                    test_x,
+                    test_y - 0.25,
+                    freq_text,
+                    fontsize=5,
+                    ha='center',
+                    va='top',
+                    color='#555555',
+                    alpha=0.8,
+                    weight='bold',
+                    zorder=1999
+                )
