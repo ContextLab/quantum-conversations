@@ -395,24 +395,24 @@ class TokenSequenceVisualizer:
             valid_ranks = [r for r in ranks_used if 1 <= r <= max_vocab_display]
             if valid_ranks:
                 max_rank_used = int(max(valid_ranks))
-                # Set y limits with rank 1 at top, tighter bounds
-                ax.set_ylim(max_rank_used + 0.3, 0.7)  # Tighter bounds
+                # Set y limits with rank 1 at top, more padding to prevent cutoff
+                ax.set_ylim(max_rank_used + 0.8, 0.3)  # More padding for tokens
 
                 # Set reasonable number of y-ticks
                 n_ticks = min(max_rank_used, max_vocab_display)
                 ax.set_yticks(range(1, n_ticks + 1))
                 ax.set_yticklabels(range(1, n_ticks + 1))
             else:
-                ax.set_ylim(max_vocab_display + 0.3, 0.7)
+                ax.set_ylim(max_vocab_display + 0.8, 0.3)
                 ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
         else:
-            ax.set_ylim(max_vocab_display + 0.3, 0.7)
+            ax.set_ylim(max_vocab_display + 0.8, 0.3)
             ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
 
-        # Customize plot appearance with larger fonts
-        ax.set_xlabel('Output position', fontsize=14)
-        ax.set_ylabel('Token rank (by frequency)', fontsize=14)
-        ax.tick_params(axis='both', labelsize=12)  # Larger tick labels
+        # Customize plot appearance with much larger fonts
+        ax.set_xlabel('Output position', fontsize=18, fontweight='normal')
+        ax.set_ylabel('Token rank (by frequency)', fontsize=18, fontweight='normal')
+        ax.tick_params(axis='both', labelsize=14)  # Larger tick labels
 
         # No title per requirements
 
@@ -828,9 +828,9 @@ class TokenSequenceVisualizer:
         else:
             ax_pos = None
 
-        # Create new smaller axis for colorbar, closer to main plot
-        # Position at bottom 1/3, narrow, closer to main plot
-        small_cbar_ax = fig.add_axes([0.86, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
+        # Create new smaller axis for colorbar with small gap from main plot
+        # Position at bottom 1/3, narrow, with appropriate spacing
+        small_cbar_ax = fig.add_axes([0.90, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
 
         # Create colorbar in the smaller axis
         cbar = ColorbarBase(

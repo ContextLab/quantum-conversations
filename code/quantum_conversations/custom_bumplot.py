@@ -21,7 +21,7 @@ def create_custom_bumplot(
     metadata: Dict,
     ax: plt.Axes,
     colormap: str = 'RdYlGn',
-    alpha: float = 0.5,  # Reduced alpha as requested
+    alpha: float = 0.2,  # Lower alpha for better transparency visibility
     linewidth: float = 2.5,
     curve_force: float = 0.3
 ) -> None:
@@ -99,10 +99,10 @@ def create_custom_bumplot(
                         x_segment = np.concatenate([x_segment, x_overlap])
                         y_segment = np.concatenate([y_segment, y_overlap])
 
-                    # Plot this segment
+                    # Plot this segment with explicit alpha
                     ax.plot(x_segment, y_segment, color=color, alpha=alpha,
                            linewidth=linewidth, solid_capstyle='round',
-                           solid_joinstyle='round', zorder=100)  # Below labels
+                           solid_joinstyle='round', zorder=100, rasterized=False)  # Below labels
 
             except Exception as e:
                 # Fallback to linear segments
@@ -332,13 +332,13 @@ def add_token_labels(
                     # Better special character handling
                     token_text = token_text.replace('\n', '↵').replace('\t', '→')
                     token_text = token_text.replace('\r', '↲')
-                    # Smart truncation
-                    if len(token_text) > 10:
+                    # Increased max length, smart truncation
+                    if len(token_text) > 15:
                         # Try to break at word boundary
-                        if ' ' in token_text[:10]:
-                            token_text = token_text[:token_text[:10].rfind(' ')] + '..'
+                        if ' ' in token_text[:15]:
+                            token_text = token_text[:token_text[:15].rfind(' ')] + '..'
                         else:
-                            token_text = token_text[:8] + '..'
+                            token_text = token_text[:13] + '..'
                     # Handle empty tokens
                     if not token_text or token_text.isspace():
                         token_text = '[space]'  # Text representation for space
@@ -408,8 +408,11 @@ def add_token_labels(
                 # Skip this label if no position found
                 continue
 
-            # Uniform font size for all tokens
-            fontsize = 12  # Increased and uniform
+            # Adaptive font size based on token length
+            if len(token_text) > 10:
+                fontsize = 10  # Smaller for long tokens
+            else:
+                fontsize = 12  # Standard size
             weight = 'normal'  # Consistent weight
 
             # Add token label with opaque background
