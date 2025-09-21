@@ -367,13 +367,14 @@ class TokenSequenceVisualizer:
         ax.set_title('Particle Token Trajectories (Bump Plot)', fontsize=14, fontweight='bold')
 
         # Set y-axis ticks to show ranks (1 at top)
-        ranks = sorted(metadata['token_ranks'].values())
-        ax.set_yticks(ranks)
-        ax.set_yticklabels(ranks)
+        max_rank = metadata.get('max_vocab_display', 20)
+        ax.set_yticks(range(1, min(max_rank + 1, 21)))  # Show up to 20 ranks
+        ax.set_yticklabels(range(1, min(max_rank + 1, 21)))
         ax.invert_yaxis()  # Rank 1 at top
+        ax.set_ylim(min(max_rank + 0.5, 20.5), 0.5)  # Set limits
 
         # Overlay token labels on the plot if requested
-        if show_tokens and 'token_to_text' in metadata:
+        if show_tokens:
             self._overlay_token_labels(ax, df, metadata, max_length=len(df))
 
         # Add colorbar if using probability coloring
@@ -394,6 +395,7 @@ class TokenSequenceVisualizer:
     ) -> Tuple[pd.DataFrame, Dict]:
         """
         Transform particle data into bumplot-compatible format.
+        Ranks tokens at each position by cross-particle frequency.
 
         Returns:
             - DataFrame with columns: ['timestep', 'particle_0', 'particle_1', ...]
@@ -402,68 +404,108 @@ class TokenSequenceVisualizer:
         if not particles:
             return pd.DataFrame(), {}
 
+        from collections import Counter, defaultdict
+
         # Find max sequence length
         max_length = max(len(p.tokens) for p in particles)
 
-        # Get token ranks
-        token_ranks = self._rank_tokens_by_frequency(particles, max_vocab_display)
+        # Collect token data at each position
+        position_data = defaultdict(lambda: defaultdict(list))
 
-        # Create DataFrame structure
-        data = {'timestep': list(range(max_length))}
+        for particle_idx, particle in enumerate(particles):
+            for t in range(min(len(particle.tokens), max_length)):
+                token_id = particle.tokens[t]
 
-        # Track metadata
-        metadata = {
-            'token_ranks': token_ranks,
-            'transition_probs': {},
-            'token_to_text': {},
-            'position_tokens': {}  # Maps (timestep, rank) -> token_text
-        }
-
-        # Process each particle
-        for i, particle in enumerate(particles):
-            col_name = f'particle_{i}'
-
-            # Convert tokens to ranks, padding with NaN for shorter sequences
-            ranked_tokens = []
-            for t, token in enumerate(particle.tokens):
-                if token in token_ranks:
-                    rank = token_ranks[token]
-                    ranked_tokens.append(rank)
-
-                    # Store which token appears at this position and rank
-                    if hasattr(self, 'tokenizer'):
-                        try:
-                            token_text = self.tokenizer.decode([token])
-                            # Clean up token text
-                            token_text = token_text.strip().replace('\n', '↵')[:15]
-                            if (t, rank) not in metadata['position_tokens']:
-                                metadata['position_tokens'][(t, rank)] = token_text
-                        except:
-                            pass
-
-                    # Store transition probability if available
-                    if t > 0 and t-1 < len(particle.token_probs_history):
-                        if token in particle.token_probs_history[t-1]:
-                            prob = particle.token_probs_history[t-1][token]
-                            metadata['transition_probs'][(i, t)] = prob
+                # Get within-particle probability if available
+                if t > 0 and t-1 < len(particle.token_probs_history):
+                    if token_id in particle.token_probs_history[t-1]:
+                        prob = particle.token_probs_history[t-1][token_id]
+                    else:
+                        prob = 0.0
                 else:
-                    # Token not in top-k, assign worst rank
-                    ranked_tokens.append(max_vocab_display + 1)
+                    prob = 1.0  # First token or no history
 
-            # Pad with NaN for shorter sequences
-            ranked_tokens += [np.nan] * (max_length - len(ranked_tokens))
-            data[col_name] = ranked_tokens
+                position_data[t][token_id].append({
+                    'particle_idx': particle_idx,
+                    'within_particle_prob': prob
+                })
 
-        # Store token text mappings
-        if hasattr(self, 'tokenizer'):
-            for token_id, rank in token_ranks.items():
+        # Compute cross-particle ranks at each position
+        position_ranks = {}
+        token_metadata = {}
+
+        for t in range(max_length):
+            # Count frequency of each token at this position
+            token_counts = Counter()
+            for token_id, particle_list in position_data[t].items():
+                token_counts[token_id] = len(particle_list)
+
+            # Rank tokens by frequency (most common = rank 1)
+            ranked_tokens = sorted(token_counts.items(), key=lambda x: (-x[1], x[0]))
+
+            # Only keep top max_vocab_display tokens
+            ranked_tokens = ranked_tokens[:max_vocab_display]
+
+            # Assign ranks
+            rank_map = {}
+            for rank, (token_id, count) in enumerate(ranked_tokens, 1):
+                rank_map[token_id] = rank
+
+                # Decode token text
                 try:
                     token_text = self.tokenizer.decode([token_id])
-                    metadata['token_to_text'][rank] = token_text[:20]  # Truncate long tokens
+                    # Clean up token text
+                    token_text = token_text.strip().replace('\n', '↵').replace('\t', '→')
+                    if len(token_text) > 12:
+                        token_text = token_text[:10] + '..'
                 except:
-                    metadata['token_to_text'][rank] = f"<token_{token_id}>"
+                    token_text = f"<{token_id}>"
 
-        return pd.DataFrame(data), metadata
+                # Calculate average within-particle probability
+                avg_prob = np.mean([
+                    p['within_particle_prob']
+                    for p in position_data[t][token_id]
+                ])
+
+                # Store metadata for this token at this position
+                token_metadata[(t, rank)] = {
+                    'token_id': token_id,
+                    'token_text': token_text,
+                    'frequency': count,
+                    'frequency_pct': count / len(particles),
+                    'avg_within_prob': avg_prob,
+                    'particle_indices': [p['particle_idx'] for p in position_data[t][token_id]]
+                }
+
+            position_ranks[t] = rank_map
+
+        # Create DataFrame with particle trajectories
+        data = {'timestep': list(range(max_length))}
+
+        # Track each particle's path through the ranks
+        for particle_idx, particle in enumerate(particles):
+            trajectory = []
+            for t in range(max_length):
+                if t < len(particle.tokens):
+                    token_id = particle.tokens[t]
+                    rank = position_ranks[t].get(token_id, max_vocab_display + 1)
+                    trajectory.append(rank)
+                else:
+                    trajectory.append(np.nan)
+
+            data[f'particle_{particle_idx}'] = trajectory
+
+        df = pd.DataFrame(data)
+
+        metadata = {
+            'token_metadata': token_metadata,
+            'position_ranks': position_ranks,
+            'n_particles': len(particles),
+            'max_length': max_length,
+            'max_vocab_display': max_vocab_display
+        }
+
+        return df, metadata
 
     def _rank_tokens_by_frequency(
         self,
@@ -535,21 +577,8 @@ class TokenSequenceVisualizer:
         n_particles = len(particles)
 
         if color_by == 'transition_prob':
-            # Color based on average transition probability
-            colors = []
-            cmap = plt.cm.plasma
-
-            for i in range(n_particles):
-                # Get all transition probs for this particle
-                probs = [metadata['transition_probs'].get((i, t), 0.5)
-                        for t in range(len(particles[i].tokens))]
-
-                # Use average probability for color
-                avg_prob = np.mean(probs) if probs else 0.5
-                color = cmap(avg_prob)
-                colors.append(plt.matplotlib.colors.to_hex(color))
-
-            metadata['colormap'] = cmap
+            # Use a uniform color since probabilities are now in token backgrounds
+            colors = ['#4682B4'] * n_particles  # Steel blue
 
         elif color_by == 'entropy':
             # Color based on average entropy
@@ -587,31 +616,81 @@ class TokenSequenceVisualizer:
     ):
         """
         Overlay token text at each (timestep, rank) position on the plot.
+        Background color indicates within-particle probability.
         """
-        position_tokens = metadata.get('position_tokens', {})
-        if not position_tokens:
+        token_metadata = metadata.get('token_metadata', {})
+        if not token_metadata:
             return
 
-        # Add text annotations for each unique token at each position
-        for (timestep, rank), token_text in position_tokens.items():
+        import matplotlib.cm as cm
+        from matplotlib.colors import to_hex
+
+        # Track positions to avoid overlap
+        used_positions = set()
+
+        for (timestep, rank), info in token_metadata.items():
             if timestep < max_length:
-                # Add text at the position, with slight offset for readability
-                ax.text(
+                # Skip if frequency too low (less than 5% of particles)
+                if info['frequency_pct'] < 0.05 and rank > 10:
+                    continue
+
+                # Determine background color based on within-particle probability
+                avg_prob = info['avg_within_prob']
+
+                # Use color gradient: high prob = green, low prob = red
+                if avg_prob > 0.7:
+                    color = cm.YlGn(0.7 + avg_prob * 0.3)
+                elif avg_prob > 0.3:
+                    color = cm.YlOrRd(1.0 - avg_prob)
+                else:
+                    color = cm.Reds(0.3 + avg_prob * 0.7)
+
+                # Adjust alpha based on frequency
+                alpha = min(0.5 + info['frequency_pct'] * 0.5, 0.95)
+
+                # Check for text overlap
+                y_offset = 0
+                key = (timestep, rank)
+                nearby_keys = [(timestep, rank + i) for i in range(-1, 2) if i != 0]
+                for nkey in nearby_keys:
+                    if nkey in used_positions:
+                        y_offset = 0.2  # Slight offset if nearby position is used
+                        break
+
+                # Add text with colored background
+                text = ax.text(
                     timestep,
-                    rank,
-                    token_text,
-                    fontsize=7,
+                    rank + y_offset,
+                    info['token_text'],
+                    fontsize=7 if info['frequency_pct'] > 0.1 else 6,
                     ha='center',
                     va='center',
+                    weight='bold' if info['frequency_pct'] > 0.5 else 'normal',
                     bbox=dict(
-                        boxstyle='round,pad=0.2',
-                        facecolor='white',
-                        edgecolor='gray',
-                        alpha=0.8,
+                        boxstyle='round,pad=0.25',
+                        facecolor=to_hex(color),
+                        edgecolor='darkgray',
+                        alpha=alpha,
                         linewidth=0.5
                     ),
-                    zorder=1000  # Ensure text appears on top
+                    zorder=1000 + rank  # Layer by rank
                 )
+
+                # Add frequency annotation for significant tokens
+                if info['frequency_pct'] > 0.2:
+                    ax.text(
+                        timestep,
+                        rank + y_offset - 0.3,
+                        f"{info['frequency_pct']:.0%}",
+                        fontsize=5,
+                        ha='center',
+                        va='top',
+                        color='gray',
+                        alpha=0.7,
+                        zorder=999
+                    )
+
+                used_positions.add(key)
 
     def _add_probability_colorbar(
         self,
