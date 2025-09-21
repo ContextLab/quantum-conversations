@@ -21,9 +21,9 @@ def create_custom_bumplot(
     metadata: Dict,
     ax: plt.Axes,
     colormap: str = 'RdYlGn',
-    alpha: float = 0.7,
-    linewidth: float = 1.5,
-    curve_force: float = 0.5
+    alpha: float = 0.8,
+    linewidth: float = 2.5,
+    curve_force: float = 0.3
 ) -> None:
     """
     Create custom bumplot with smooth spline curves and per-segment coloring.
@@ -34,12 +34,12 @@ def create_custom_bumplot(
         ax: Matplotlib axes
         colormap: Colormap to use for probabilities
         alpha: Line transparency
-        linewidth: Line width
+        linewidth: Base line width (increased for visibility)
         curve_force: Intensity of curve bending (0-1)
     """
     from matplotlib.colors import to_hex
     from matplotlib.collections import LineCollection
-    from scipy.interpolate import make_interp_spline
+    from scipy.interpolate import interp1d
     import matplotlib.pyplot as plt
 
     cmap = plt.colormaps[colormap]
@@ -53,102 +53,79 @@ def create_custom_bumplot(
     if transition_probs:
         transition_freqs = transition_probs
 
-    # Plot each particle trajectory with smooth curves
+    # Plot each particle trajectory
     particle_cols = [c for c in df.columns if c.startswith('particle_')]
 
-    # Group particles by their trajectories to ensure identical paths converge
-    trajectory_groups = defaultdict(list)
     for col in particle_cols:
         trajectory = df[['timestep', col]].dropna()
-        if len(trajectory) >= 2:
-            # Create a hashable key from the trajectory
-            traj_key = tuple(zip(trajectory['timestep'].values, trajectory[col].values))
-            trajectory_groups[traj_key].append(col)
-
-    # Plot each unique trajectory
-    for traj_key, particle_list in trajectory_groups.items():
-        # Convert back to arrays
-        points = np.array(traj_key)
-        x = points[:, 0]
-        y = points[:, 1]
-
-        if len(x) < 2:
+        if len(trajectory) < 2:
             continue
 
-        # Create smooth segments between each pair of points
-        for i in range(len(x) - 1):
-            x_seg = np.array([x[i], x[i+1]])
-            y_seg = np.array([y[i], y[i+1]])
+        x = trajectory['timestep'].values
+        y = trajectory[col].values
 
-            # Get transition frequency for coloring
-            from_rank = int(y[i])
-            to_rank = int(y[i+1])
-            timestep = int(x[i])
+        # First, create smooth interpolation for the ENTIRE trajectory
+        # This prevents overshooting
+        if len(x) > 2:
+            # Use cubic interpolation for the whole path
+            try:
+                # Create interpolation function for entire trajectory
+                f = interp1d(x, y, kind='quadratic', fill_value='extrapolate')
 
-            # Look up transition frequency
-            transition_key = (timestep, from_rank, to_rank)
-            freq = transition_freqs.get(transition_key, 0.0)
+                # Generate smooth points for entire trajectory
+                x_smooth_full = np.linspace(x[0], x[-1], len(x) * 20)
+                y_smooth_full = f(x_smooth_full)
 
-            # Determine color and width based on frequency
-            color = cmap(norm(freq))
-            segment_width = linewidth * (0.3 + freq * 0.7)  # Scale by frequency
-            segment_alpha = alpha * (0.5 + freq * 0.5)  # More opaque for common transitions
+                # Now draw segments with appropriate colors
+                for i in range(len(x) - 1):
+                    # Get segment boundaries
+                    mask = (x_smooth_full >= x[i]) & (x_smooth_full <= x[i+1])
+                    x_segment = x_smooth_full[mask]
+                    y_segment = y_smooth_full[mask]
 
-            # Create smooth curve between points
-            rank_change = abs(y_seg[1] - y_seg[0])
+                    # Get transition frequency for coloring
+                    from_rank = int(y[i])
+                    to_rank = int(y[i+1])
+                    timestep = int(x[i])
 
-            if rank_change > 0.1:  # Only curve if there's significant movement
-                try:
-                    # Use spline interpolation for smooth S-curves
-                    # Add control points for better curves
-                    control_offset = curve_force * 0.4  # How far to push control points
+                    # Look up transition frequency
+                    transition_key = (timestep, from_rank, to_rank)
+                    freq = transition_freqs.get(transition_key, 0.0)
 
-                    # Create control points for cubic spline
-                    if rank_change > 2:  # Strong S-curve for large transitions
-                        # Add intermediate control points
-                        x_control = np.array([
-                            x_seg[0],
-                            x_seg[0] + (x_seg[1] - x_seg[0]) * 0.3,
-                            x_seg[0] + (x_seg[1] - x_seg[0]) * 0.7,
-                            x_seg[1]
-                        ])
-                        y_control = np.array([
-                            y_seg[0],
-                            y_seg[0],  # Hold at starting rank
-                            y_seg[1],  # Jump to ending rank
-                            y_seg[1]
-                        ])
-                    else:  # Gentle curve for small transitions
-                        x_control = np.array([x_seg[0], x_seg[0] + (x_seg[1]-x_seg[0])*0.5, x_seg[1]])
-                        y_control = np.array([y_seg[0], (y_seg[0] + y_seg[1])*0.5, y_seg[1]])
+                    # Determine color based on frequency
+                    color = cmap(norm(freq))
 
-                    # Create spline with appropriate degree
-                    k = min(3, len(x_control) - 1)  # Cubic or less
-                    if k >= 1:
-                        spl = make_interp_spline(x_control, y_control, k=k)
+                    # Plot this segment with appropriate color
+                    ax.plot(x_segment, y_segment, color=color, alpha=alpha,
+                           linewidth=linewidth, solid_capstyle='round',
+                           solid_joinstyle='round')
 
-                        # Generate smooth points
-                        x_smooth = np.linspace(x_seg[0], x_seg[1], 50)
-                        y_smooth = spl(x_smooth)
+            except Exception as e:
+                # Fallback to linear segments
+                for i in range(len(x) - 1):
+                    from_rank = int(y[i])
+                    to_rank = int(y[i+1])
+                    timestep = int(x[i])
 
-                        # Plot the smooth curve
-                        ax.plot(x_smooth, y_smooth, color=color, alpha=segment_alpha,
-                               linewidth=segment_width, solid_capstyle='round',
-                               solid_joinstyle='round')
-                    else:
-                        # Fallback to straight line
-                        ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
-                               linewidth=segment_width)
+                    transition_key = (timestep, from_rank, to_rank)
+                    freq = transition_freqs.get(transition_key, 0.0)
+                    color = cmap(norm(freq))
 
-                except Exception as e:
-                    logger.debug(f"Spline interpolation failed: {e}, using straight line")
-                    # Fallback to straight line
-                    ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
-                           linewidth=segment_width)
-            else:
-                # Straight line for no/minimal rank change
-                ax.plot(x_seg, y_seg, color=color, alpha=segment_alpha,
-                       linewidth=segment_width)
+                    ax.plot([x[i], x[i+1]], [y[i], y[i+1]],
+                           color=color, alpha=alpha, linewidth=linewidth)
+        else:
+            # For trajectories with only 2 points, draw straight line
+            for i in range(len(x) - 1):
+                from_rank = int(y[i])
+                to_rank = int(y[i+1])
+                timestep = int(x[i])
+
+                transition_key = (timestep, from_rank, to_rank)
+                freq = transition_freqs.get(transition_key, 0.0)
+                color = cmap(norm(freq))
+
+                ax.plot([x[i], x[i+1]], [y[i], y[i+1]],
+                       color=color, alpha=alpha, linewidth=linewidth)
 
 
 def prepare_transition_data(
@@ -285,9 +262,9 @@ def add_token_labels(
     metadata: Dict,
     tokenizer,
     colormap: str = 'RdYlGn',
-    show_freq: bool = True,
+    show_freq: bool = False,  # Changed to False - no frequency labels
     min_freq_threshold: float = 0.05,
-    max_labels_per_timestep: int = 10
+    max_labels_per_timestep: int = 15
 ) -> None:
     """
     Add token labels with smart positioning and background coloring.
@@ -339,14 +316,8 @@ def add_token_labels(
             if labels_added >= max_labels_per_timestep:
                 break
 
-            # Always show high-frequency tokens (>20%)
-            # Show medium frequency (5-20%) if space available
-            # Skip very low frequency (<5%) unless top 5
-            if info['frequency_pct'] < 0.2:
-                if info['frequency_pct'] < min_freq_threshold and labels_added >= 5:
-                    continue
-                if rank > 10 and info['frequency_pct'] < 0.1:
-                    continue
+            # Show all tokens that have a rank (they have particles there)
+            # This ensures no "empty" ranks
 
             # Decode token text (use cache if available)
             token_text = metadata.get('token_to_text', {}).get(info['token_id'])
@@ -424,15 +395,15 @@ def add_token_labels(
                 # Skip this label if no position found
                 continue
 
-            # Determine font size based on importance
+            # Larger font size for better readability
             if info['frequency_pct'] > 0.5:
-                fontsize = 8
+                fontsize = 11
                 weight = 'bold'
             elif info['frequency_pct'] > 0.2:
-                fontsize = 7
+                fontsize = 10
                 weight = 'semibold'
             else:
-                fontsize = 6
+                fontsize = 9
                 weight = 'normal'
 
             # Add token label
@@ -458,18 +429,4 @@ def add_token_labels(
             placed_boxes.append(bbox)
             labels_added += 1
 
-            # Add frequency annotation for significant tokens
-            if show_freq and info['frequency_pct'] >= 0.2:
-                freq_text = f"{info['frequency_pct']:.0%}"
-                ax.text(
-                    test_x,
-                    test_y - 0.25,
-                    freq_text,
-                    fontsize=5,
-                    ha='center',
-                    va='top',
-                    color='#555555',
-                    alpha=0.8,
-                    weight='bold',
-                    zorder=1999
-                )
+            # Removed frequency annotations per requirements

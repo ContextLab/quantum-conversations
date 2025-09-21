@@ -347,8 +347,8 @@ class TokenSequenceVisualizer:
         fig = plt.figure(figsize=figsize)
         from matplotlib.gridspec import GridSpec
 
-        # Create grid: main plot + colorbar space
-        gs = GridSpec(1, 2, width_ratios=[15, 1], figure=fig)
+        # Create grid: main plot + narrow colorbar space
+        gs = GridSpec(1, 2, width_ratios=[30, 1], figure=fig, wspace=0.02)
         ax = fig.add_subplot(gs[0, 0])
 
         # Use custom bumplot with smooth curves
@@ -392,8 +392,8 @@ class TokenSequenceVisualizer:
 
         if ranks_used:
             max_rank_used = int(max(ranks_used))
-            # Set y limits with small padding
-            ax.set_ylim(min(max_rank_used + 0.5, max_vocab_display + 0.5), 0.5)
+            # Set y limits with rank 1 at top
+            ax.set_ylim(max_rank_used + 0.5, 0.5)  # This puts rank 1 at top
 
             # Set reasonable number of y-ticks
             n_ticks = min(max_rank_used, 15)
@@ -403,21 +403,11 @@ class TokenSequenceVisualizer:
             ax.set_ylim(max_vocab_display + 0.5, 0.5)
             ax.set_yticks(range(1, min(max_vocab_display + 1, 16)))
 
-        ax.invert_yaxis()  # Rank 1 at top
-
         # Customize plot appearance
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('Token Rank (by frequency)', fontsize=12)
+        ax.set_xlabel('Output position', fontsize=12)
+        ax.set_ylabel('Token rank (by frequency)', fontsize=12)
 
-        # Create informative title
-        if prompt:
-            title = f'Token Trajectories: "{prompt[:50]}..."' if len(prompt) > 50 else f'Token Trajectories: "{prompt}"'
-        else:
-            title = 'Particle Token Trajectories (Bump Plot)'
-
-        n_particles = metadata.get('n_particles', len(particles))
-        title += f'\n({n_particles} particles, max {max_vocab_display} tokens shown per timestep)'
-        ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+        # No title per requirements
 
         # Add grid for better readability
         ax.grid(True, axis='x', alpha=0.3, linestyle=':')
@@ -432,9 +422,9 @@ class TokenSequenceVisualizer:
                     metadata,
                     self.tokenizer,
                     colormap=colormap,
-                    show_freq=True,
-                    min_freq_threshold=0.05,
-                    max_labels_per_timestep=min(10, max_vocab_display)
+                    show_freq=False,  # No frequency labels
+                    min_freq_threshold=0.0,  # Show all tokens that have ranks
+                    max_labels_per_timestep=max_vocab_display  # Show all ranked tokens
                 )
             except Exception as e:
                 logger.warning(f"Token label error: {e}")
@@ -484,13 +474,19 @@ class TokenSequenceVisualizer:
                 token_id = particle.tokens[t]
 
                 # Get within-particle probability if available
-                if t > 0 and t-1 < len(particle.token_probs_history):
+                # For prompt tokens (first few positions), probability should be 1.0
+                prompt_length = len(particle.prompt_tokens) if hasattr(particle, 'prompt_tokens') else 0
+
+                if t < prompt_length:
+                    # Prompt tokens have 100% probability (they are observed)
+                    prob = 1.0
+                elif t > 0 and t-1 < len(particle.token_probs_history):
                     if token_id in particle.token_probs_history[t-1]:
                         prob = particle.token_probs_history[t-1][token_id]
                     else:
                         prob = 0.0
                 else:
-                    prob = 1.0  # First token or no history
+                    prob = 1.0  # First generated token
 
                 position_data[t][token_id].append({
                     'particle_idx': particle_idx,
@@ -800,50 +796,41 @@ class TokenSequenceVisualizer:
         colormap: str
     ):
         """
-        Add improved legend explaining dual probability coloring.
-        Places colorbar in dedicated axis to avoid overlap.
+        Add simplified colorbar - narrow, short, minimal labels.
         """
         from matplotlib.colors import Normalize
         from matplotlib.colorbar import ColorbarBase
         import matplotlib.pyplot as plt
+        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
         cmap = plt.colormaps[colormap]
         norm = Normalize(vmin=0, vmax=1)
 
-        # Create colorbar in the provided axis
+        # Create a smaller colorbar positioned at bottom 1/3 of the figure
+        # Use the original cbar_ax parent to get the figure
+        parent_ax = cbar_ax
+
+        # Clear the full-height axis
+        cbar_ax.set_visible(False)
+
+        # Create new smaller axis for colorbar
+        # Position at bottom 1/3, make it narrower
+        small_cbar_ax = fig.add_axes([0.92, 0.15, 0.008, 0.25])  # [left, bottom, width, height]
+
+        # Create colorbar in the smaller axis
         cbar = ColorbarBase(
-            cbar_ax,
+            small_cbar_ax,
             cmap=cmap,
             norm=norm,
             orientation='vertical'
         )
 
-        # Set colorbar properties
-        cbar.set_label('Probability', fontsize=10, labelpad=10)
-        cbar.ax.tick_params(labelsize=8)
+        # Only show 0% and 100% labels
+        cbar.set_ticks([0, 1])
+        cbar.ax.set_yticklabels(['0%', '100%'], fontsize=9)
+        cbar.ax.tick_params(size=0)  # Hide tick marks
 
-        # Format tick labels as percentages
-        ticks = [0, 0.25, 0.5, 0.75, 1.0]
-        cbar.set_ticks(ticks)
-        cbar.ax.set_yticklabels([f'{int(t*100)}%' for t in ticks])
-
-        # Add legend title above colorbar
-        cbar_ax.text(0.5, 1.05, 'Color Scale', transform=cbar_ax.transAxes,
-                    ha='center', fontsize=9, weight='bold')
-
-        # Add explanatory text below colorbar
-        legend_text = (
-            "Curve segments:\n"
-            "  Transition frequency\n"
-            "  (% of particles)\n\n"
-            "Token backgrounds:\n"
-            "  Within-particle\n"
-            "  probability\n"
-            "  (model confidence)"
-        )
-
-        cbar_ax.text(0.5, -0.1, legend_text, transform=cbar_ax.transAxes,
-                    ha='center', va='top', fontsize=7, linespacing=1.5)
+        # No title, no additional text per requirements
 
     def _add_dual_probability_legend(
         self,
