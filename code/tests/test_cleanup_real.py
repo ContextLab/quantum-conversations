@@ -144,8 +144,7 @@ class TestRealModelLoading:
         )
 
         # Real generation
-        pf.initialize("Test prompt")
-        particles = pf.generate(n_steps=10)  # Use n_steps instead of max_length
+        particles = pf.generate("Test prompt", max_new_tokens=10)
 
         # Verify real output
         assert len(particles) == 2
@@ -159,8 +158,7 @@ class TestRealModelLoading:
             n_particles=3,
             device="cpu"
         )
-        pf.initialize("Hello")
-        particles = pf.generate(n_steps=5)  # Use n_steps
+        particles = pf.generate("Hello", max_new_tokens=5)
 
         # Initialize visualizer with tokenizer
         visualizer = TokenSequenceVisualizer(pf.tokenizer)
