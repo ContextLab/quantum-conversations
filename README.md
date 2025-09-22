@@ -80,9 +80,9 @@ pf = ParticleFilter(
 prompt = "The meaning of life is"
 particles = pf.generate(prompt, max_new_tokens=30)
 
-# Visualize the paths
+# Visualize the token trajectories using bump plot
 viz = TokenSequenceVisualizer(tokenizer=pf.tokenizer)
-fig = viz.visualize(particles, prompt)
+fig = viz.visualize_bumplot(particles, output_path='bumplot.png')
 ```
 
 ### Key Components
@@ -93,9 +93,9 @@ fig = viz.visualize(particles, prompt)
 - Supports temperature, top-k, and top-p sampling
 
 #### TokenSequenceVisualizer
-- Creates Sankey-like diagrams showing particle paths
-- **NEW: Bump plot visualizations** showing token trajectories over time
-- Generates probability heatmaps
+- Creates bump plot visualizations showing token trajectories over time
+- Colors transitions by probability, entropy, or particle ID
+- Smart label positioning with collision detection
 - Customizable styling and output options
 
 ### Running Tests
@@ -105,29 +105,35 @@ cd code
 pytest tests/ -v
 ```
 
-### Example Notebook
+### Example Notebooks
 
-See `code/quantum_conversations_demo.ipynb` for a comprehensive demonstration including:
-- Visualizing paths for 30 different starter sequences
-- Analyzing divergence patterns based on prompt ambiguity
-- Interactive exploration of custom prompts
+- `code/notebooks/quantum_conversations_demo.ipynb` - Interactive exploration with 30 starter sequences
+- `code/notebooks/demo_bumplot_visualization.ipynb` - Bump plot visualization examples
+- `code/notebooks/comprehensive_demo.ipynb` - Full feature demonstration
 
 ### Bump Plot Visualization
 
-The new bump plot feature visualizes how tokens evolve across time for each particle:
+The bump plot visualization shows how token ranks evolve across generation steps:
 
 ```python
-# Create bump plot visualization
+# Create bump plot visualization with different color schemes
 fig = viz.visualize_bumplot(
     particles,
-    color_by='transition_prob',  # Color by probability
-    max_vocab_display=50,         # Show top 50 tokens
-    show_tokens=True,              # Display token labels
+    color_by='transition_prob',  # Color by transition probability
+    max_vocab_display=15,         # Show top 15 tokens
+    show_tokens=True,             # Display token labels
+    curve_force=0.5,              # Smoothness of curves (0-1)
     output_path='bumplot.png'
 )
 ```
 
-Color schemes available:
-- `'transition_prob'`: Colors reflect token transition probabilities
+**Color schemes available:**
+- `'transition_prob'`: Colors reflect token transition probabilities (default)
 - `'entropy'`: Colors based on entropy at each step
 - `'particle_id'`: Distinct colors for each particle
+
+**Key features:**
+- Smooth sigmoid curves prevent overshooting
+- Smart token label positioning avoids overlaps
+- Adaptive font sizing for readability
+- Dual probability display (transition frequency + within-particle probability)
