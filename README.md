@@ -17,9 +17,51 @@ This repository includes a Python implementation of the particle filter approach
 ### Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/ContextLab/quantum-conversations.git
+cd quantum-conversations
+
+# Install dependencies
 cd code
 pip install -r requirements.txt
 pip install -e .
+```
+
+### Project Structure
+
+```
+quantum-conversations/
+├── code/
+│   ├── quantum_conversations/  # Core package
+│   │   ├── particle_filter.py  # Particle filtering implementation
+│   │   ├── visualizer.py       # Bumplot visualization
+│   │   └── custom_bumplot.py   # Advanced bumplot features
+│   ├── examples/               # Demo scripts
+│   ├── tests/                  # Test suite (real tests, no mocks)
+│   ├── scripts/                # Maintenance tools
+│   └── notebooks/              # Jupyter notebooks
+├── data/
+│   ├── raw/                   # Original experimental data
+│   └── derivatives/            # Generated visualizations
+└── paper/                      # Research paper (LaTeX)
+```
+
+### Repository Maintenance
+
+This repository includes automated cleanup and maintenance tools:
+
+```bash
+# Run cleanup audit (dry-run mode to see what would change)
+python code/scripts/cleanup_repository.py --dry-run
+
+# Execute full cleanup
+python code/scripts/cleanup_repository.py
+
+# Install pre-commit hooks for code quality
+pre-commit install
+
+# Run all tests with real operations (no mocks)
+cd code && pytest tests/ -v
 ```
 
 ### Quick Start

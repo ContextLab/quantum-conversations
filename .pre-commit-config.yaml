@@ -1,0 +1,46 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-yaml
+      - id: check-json
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.0
+    hooks:
+      - id: ruff
+        args: [--fix, --show-fixes]
+        files: '^code/.*\.py$'
+
+  - repo: https://github.com/psf/black
+    rev: 24.1.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: '^code/.*\.py$'
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.0
+    hooks:
+      - id: isort
+        files: '^code/.*\.py$'
+
+  - repo: local
+    hooks:
+      - id: check-outputs
+        name: Check for output files in code
+        entry: bash -c 'if find code -maxdepth 1 -name "*.png" -o -name "*.pkl" -o -name "*.pdf" | grep -q .; then echo "Error: Output files found in code directory"; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      - id: no-pycache
+        name: Check for __pycache__ directories
+        entry: bash -c 'if find code -name "__pycache__" | grep -q .; then echo "Error: __pycache__ found in code directory"; exit 1; fi'
+        language: system
+        pass_filenames: false
