@@ -1,0 +1,26 @@
+============================================================
+REPOSITORY CLEANUP REPORT
+============================================================
+Timestamp: 2025-09-21 22:46:20
+Mode: EXECUTED
+
+STATISTICS:
+----------------------------------------
+Files moved: 0
+Files deleted: 0
+Directories moved: 0
+Directories deleted: 0
+Duplicates found: 0
+Total bytes cleaned: 0
+Space saved: 0.00 MB
+
+DETAILED LOG:
+----------------------------------------
+[2025-09-21 22:46:20] Moving outputs to derivatives: /Users/jmanning/quantum-conversations/data/derivatives
+[2025-09-21 22:46:20] Cleaning cache files
+[2025-09-21 22:46:20] Organizing demo scripts: /Users/jmanning/quantum-conversations/code/examples
+[2025-09-21 22:46:20] Moving test files to tests/
+[2025-09-21 22:46:20] Updating .gitignore
+[2025-09-21 22:46:20] Added 0 patterns to .gitignore
+
+============================================================
