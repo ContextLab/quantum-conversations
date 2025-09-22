@@ -1,0 +1,68 @@
+============================================================
+REPOSITORY CLEANUP REPORT
+============================================================
+Timestamp: 2025-09-21 22:44:18
+Mode: EXECUTED
+
+STATISTICS:
+----------------------------------------
+Files moved: 24
+Files deleted: 2
+Directories moved: 5
+Directories deleted: 3
+Duplicates found: 8
+Total bytes cleaned: 29,914,519
+Space saved: 28.53 MB
+
+DETAILED LOG:
+----------------------------------------
+[2025-09-21 22:44:18] Moving outputs to derivatives: /Users/jmanning/quantum-conversations/data/derivatives
+[2025-09-21 22:44:18] Moved directory: code/bumplot_final -> data/derivatives/bumplot_final (6,073,936 bytes)
+[2025-09-21 22:44:18] Moved directory: code/bumplot_final_demos -> data/derivatives/bumplot_final_demos (12,025,597 bytes)
+[2025-09-21 22:44:18] Moved directory: code/bumplot_improved -> data/derivatives/bumplot_improved (3,184,063 bytes)
+[2025-09-21 22:44:18] Moved directory: code/dual_probability_demo -> data/derivatives/dual_probability_demo (3,995,997 bytes)
+[2025-09-21 22:44:18] Moved directory: code/enhanced_bumplot_test -> data/derivatives/enhanced_bumplot_test (0 bytes)
+[2025-09-21 22:44:18] Moved file: test_bumplot.png -> data/derivatives/test_outputs/test_bumplot.png (190,071 bytes)
+[2025-09-21 22:44:18] Moved file: demo_sankey.png -> data/derivatives/demo_outputs/demo_sankey.png (145,439 bytes)
+[2025-09-21 22:44:18] Moved file: test_bumplot_entropy.png -> data/derivatives/test_outputs/test_bumplot_entropy.png (202,671 bytes)
+[2025-09-21 22:44:18] Moved file: test_transition_prob.png -> data/derivatives/test_outputs/test_transition_prob.png (269,519 bytes)
+[2025-09-21 22:44:18] Moved file: test_sankey.png -> data/derivatives/test_outputs/test_sankey.png (129,430 bytes)
+[2025-09-21 22:44:18] Moved file: verify_sankey.png -> data/derivatives/verification_outputs/verify_sankey.png (117,878 bytes)
+[2025-09-21 22:44:18] Moved file: test_particle_id.png -> data/derivatives/test_outputs/test_particle_id.png (289,517 bytes)
+[2025-09-21 22:44:18] Moved file: verify_bumplot.png -> data/derivatives/verification_outputs/verify_bumplot.png (215,032 bytes)
+[2025-09-21 22:44:18] Moved file: demo_transition_prob.png -> data/derivatives/demo_outputs/demo_transition_prob.png (291,062 bytes)
+[2025-09-21 22:44:18] Moved file: test_bumplot_transition_prob.png -> data/derivatives/test_outputs/test_bumplot_transition_prob.png (206,477 bytes)
+[2025-09-21 22:44:18] Moved file: test_bumplot_particle_id.png -> data/derivatives/test_outputs/test_bumplot_particle_id.png (214,693 bytes)
+[2025-09-21 22:44:18] Moved file: test_entropy.png -> data/derivatives/test_outputs/test_entropy.png (260,609 bytes)
+[2025-09-21 22:44:18] Moved file: demo_particle_id.png -> data/derivatives/demo_outputs/demo_particle_id.png (318,976 bytes)
+[2025-09-21 22:44:18] Moved file: verify.pkl -> data/derivatives/misc_outputs/verify.pkl (1,586,219 bytes)
+[2025-09-21 22:44:18] Cleaning cache files
+[2025-09-21 22:44:18] Removed cache: code/quantum_conversations/__pycache__ (107,905 bytes)
+[2025-09-21 22:44:18] Removed cache: code/tests/__pycache__ (73,336 bytes)
+[2025-09-21 22:44:18] Removed cache: code/.pytest_cache (3,796 bytes)
+[2025-09-21 22:44:18] Removed cache: code/.DS_Store (6,148 bytes)
+[2025-09-21 22:44:18] Removed cache: code/notebooks/.DS_Store (6,148 bytes)
+[2025-09-21 22:44:18] Organizing demo scripts: /Users/jmanning/quantum-conversations/code/examples
+[2025-09-21 22:44:18] Moved script: generate_final_demo.py -> examples/
+[2025-09-21 22:44:18] Moved primary script: run_notebook.py -> examples/
+[2025-09-21 22:44:18] Found potential duplicate: execute_notebook_cells.py (similar to run_notebook.py)
+[2025-09-21 22:44:18] Moved primary script: demo_1000_particles_resume.py -> examples/
+[2025-09-21 22:44:18] Found potential duplicate: demo_1000_particles_parallel_fixed.py (similar to demo_1000_particles_resume.py)
+[2025-09-21 22:44:18] Found potential duplicate: demo_1000_particles_parallel.py (similar to demo_1000_particles_resume.py)
+[2025-09-21 22:44:18] Found potential duplicate: run_1000_particles_demo.py (similar to demo_1000_particles_resume.py)
+[2025-09-21 22:44:18] Found potential duplicate: demo_1000_particles_final.py (similar to demo_1000_particles_resume.py)
+[2025-09-21 22:44:18] Moved script: inspect_particle_pkl.py -> examples/
+[2025-09-21 22:44:18] Moved primary script: demo_100_particles_tensor.py -> examples/
+[2025-09-21 22:44:18] Found potential duplicate: demo_200_particles.py (similar to demo_100_particles_tensor.py)
+[2025-09-21 22:44:18] Moved primary script: create_visualizations_v2.py -> examples/
+[2025-09-21 22:44:18] Found potential duplicate: create_visualizations_from_pkl.py (similar to create_visualizations_v2.py)
+[2025-09-21 22:44:18] Found potential duplicate: visualize_summary.py (similar to create_visualizations_v2.py)
+[2025-09-21 22:44:18] Moved script: create_tensor_demo.py -> examples/
+[2025-09-21 22:44:18] Moved script: generate_final_demos.py -> examples/
+[2025-09-21 22:44:18] Moved script: generate_all_sequences.py -> examples/
+[2025-09-21 22:44:18] Moving test files to tests/
+[2025-09-21 22:44:18] Moved test file: test_final_improvements.py -> tests/
+[2025-09-21 22:44:18] Updating .gitignore
+[2025-09-21 22:44:18] Added 28 patterns to .gitignore
+
+============================================================
