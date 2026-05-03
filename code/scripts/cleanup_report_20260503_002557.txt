@@ -1,0 +1,28 @@
+============================================================
+REPOSITORY CLEANUP REPORT
+============================================================
+Timestamp: 2026-05-03 00:25:57
+Mode: EXECUTED
+
+STATISTICS:
+----------------------------------------
+Files moved: 2
+Files deleted: 0
+Directories moved: 0
+Directories deleted: 0
+Duplicates found: 0
+Total bytes cleaned: 0
+Space saved: 0.00 MB
+
+DETAILED LOG:
+----------------------------------------
+[2026-05-03 00:25:57] Moving outputs to derivatives: /home/runner/work/quantum-conversations/quantum-conversations/data/derivatives
+[2026-05-03 00:25:57] Cleaning cache files
+[2026-05-03 00:25:57] Organizing demo scripts: /home/runner/work/quantum-conversations/quantum-conversations/code/examples
+[2026-05-03 00:25:57] Moving test files to tests/
+[2026-05-03 00:25:57] Moved test file: test_notebooks.py -> tests/
+[2026-05-03 00:25:57] Moved test file: quick_notebook_test.py -> tests/
+[2026-05-03 00:25:57] Updating .gitignore
+[2026-05-03 00:25:57] Added 0 patterns to .gitignore
+
+============================================================
